@@ -1,7 +1,7 @@
 name: AAEngine
 version: '${version}'
 main: dev.aaengine.paper.AAEnginePlugin
-api-version: '26.3'
+api-version: '26.2'
 folia-supported: true
 description: AAEngine content engine for Paper servers (items, blocks, furniture, recipes, packs, fonts).
 authors: [AzurHOSTS]

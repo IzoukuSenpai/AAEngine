@@ -2,8 +2,24 @@
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
 # To regenerate this file, run: ./gradlew :build-logic:dependencies --write-locks
+com.fasterxml.woodstox:woodstox-core:7.1.1=precompiledScriptPluginAccessorsGenerationClasspath
 com.google.code.gson:gson:2.11.0=precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 com.google.errorprone:error_prone_annotations:2.27.0=precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
+com.gradleup.shadow:com.gradleup.shadow.gradle.plugin:9.6.1=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath
+com.gradleup.shadow:shadow-gradle-plugin:9.6.1=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath
+commons-codec:commons-codec:1.22.0=precompiledScriptPluginAccessorsGenerationClasspath
+commons-io:commons-io:2.22.0=precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.ant:ant-launcher:1.10.17=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.ant:ant:1.10.17=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.logging.log4j:log4j-api:2.26.1=precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.logging.log4j:log4j-core:2.26.1=precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.maven:maven-api-annotations:4.0.0-rc-5=precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.maven:maven-api-xml:4.0.0-rc-5=precompiledScriptPluginAccessorsGenerationClasspath
+org.apache.maven:maven-xml:4.0.0-rc-5=precompiledScriptPluginAccessorsGenerationClasspath
+org.codehaus.plexus:plexus-utils:4.0.3=precompiledScriptPluginAccessorsGenerationClasspath
+org.codehaus.plexus:plexus-xml:4.1.1=precompiledScriptPluginAccessorsGenerationClasspath
+org.codehaus.woodstox:stax2-api:4.2.2=precompiledScriptPluginAccessorsGenerationClasspath
+org.jdom:jdom2:2.0.6.1=precompiledScriptPluginAccessorsGenerationClasspath
 org.jetbrains.kotlin.jvm:org.jetbrains.kotlin.jvm.gradle.plugin:2.4.21=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 org.jetbrains.kotlin:fus-statistics-gradle-plugin:2.4.21=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 org.jetbrains.kotlin:kotlin-assignment-compiler-plugin-embeddable:2.4.10=kotlinCompilerPluginClasspathMain
@@ -26,6 +42,7 @@ org.jetbrains.kotlin:kotlin-gradle-plugin-idea:2.4.21=precompiledScriptPluginAcc
 org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 org.jetbrains.kotlin:kotlin-gradle-plugins-bom:2.4.21=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 org.jetbrains.kotlin:kotlin-klib-commonizer-api:2.4.21=precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
+org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.10=precompiledScriptPluginAccessorsGenerationClasspath
 org.jetbrains.kotlin:kotlin-native-utils:2.4.21=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 org.jetbrains.kotlin:kotlin-reflect:1.6.10=kotlinBuildToolsApiClasspath
 org.jetbrains.kotlin:kotlin-reflect:2.4.10=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath
@@ -45,4 +62,5 @@ org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0=kotlinBuildToolsApiClass
 org.jetbrains:annotations:13.0=compileClasspath,compilePluginsBlocksPluginClasspathElements,kotlinBuildToolsApiClasspath,kotlinCompilerPluginClasspathMain,precompiledScriptPluginAccessorsGenerationClasspath
 org.jlleitschuh.gradle.ktlint:org.jlleitschuh.gradle.ktlint.gradle.plugin:14.2.0=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
 org.jlleitschuh.gradle:ktlint-gradle:14.2.0=compileClasspath,precompiledScriptPluginAccessorsGenerationClasspath,runtimeClasspath
+org.vafer:jdependency:2.16=precompiledScriptPluginAccessorsGenerationClasspath
 empty=kotlinScriptDefExtensions,testKotlinScriptDefExtensions
