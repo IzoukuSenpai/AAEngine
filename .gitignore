@@ -9,3 +9,15 @@ run/
 *.log
 .kotlin/
 !gradle-wrapper.jar
+
+# Données utilisateur et sorties de migration ItemsAdder (jamais dans le dépôt public)
+ia-data/
+ia-analysis/
+ia-scripts/
+migration-out/
+**/converted/
+report.json
+world-scan.json
+*.zip
+rollback/
+backups/

@@ -48,3 +48,11 @@ depuis le binaire décompilé. Aucune ressource, texte ou asset du produit obser
 | `NexoPack` | basse | Phase 3 Pack |
 
 La même approche pourra servir pour une façade Oraxen (`io.th0rgal.oraxen.api.OraxenItems`).
+
+## Voir aussi
+
+Pour remplacer ItemsAdder (et pas seulement offrir une façade d'API), voir
+[`itemsadder-compat.md`](itemsadder-compat.md) : réutilisation des états vanilla déjà alloués,
+couche legacy du pack, verrou des `note_block`, glyphes, furniture et façade optionnelle
+`engine-compat-itemsadder` construite sur le même modèle que la façade Nexo ci-dessus. Le runbook
+appliqué au serveur DinoRealms est un mode opératoire privé, conservé hors dépôt (données d'exploitation).
