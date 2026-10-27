@@ -7,3 +7,5 @@ out/
 run/
 .cache/
 *.log
+.kotlin/
+!gradle-wrapper.jar
