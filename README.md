@@ -49,3 +49,6 @@ Modules:
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the module layout, lockfile policy and commit conventions.
 
 See also [docs/compatibility.md](./docs/compatibility.md) for the Nexo API compatibility facade plan.
+
+See [docs/itemsadder-compat.md](./docs/itemsadder-compat.md) for the ItemsAdder compatibility and migration design (French).
+
