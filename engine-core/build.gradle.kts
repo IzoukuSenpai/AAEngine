@@ -9,3 +9,8 @@ dependencies {
     implementation(libs.configurate.kotlin)
     implementation(libs.kotlinx.coroutines)
 }
+
+// Tests : types Paper/Adventure (Key, ItemStack) référencés par l'API
+dependencies {
+    testImplementation(libs.paper.api)
+}
