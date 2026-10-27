@@ -12,6 +12,7 @@ fun Provider<PluginDependency>.toDep(): Provider<String> =
 dependencies {
     implementation(libs.plugins.kotlin.jvm.toDep())
     implementation(libs.plugins.ktlint.toDep())
+    implementation(libs.plugins.shadow.toDep())
     // Exposes the generated version-catalog accessors (LibrariesForLibs) to precompiled script plugins.
     implementation(files(libs.javaClass.superclass.protectionDomain.codeSource.location))
 }
