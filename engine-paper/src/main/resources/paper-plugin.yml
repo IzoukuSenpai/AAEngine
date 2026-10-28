@@ -29,7 +29,7 @@ permissions:
     description: /aaengine info (version, révision, dernier chargement).
     default: op
   aaengine.command.pack:
-    description: /aaengine pack build [force] (compilation du resource pack).
+    description: /aaengine pack build [force] et /aaengine pack publish (compilation et annonce du resource pack).
     default: op
   aaengine.command.validate:
     description: /aaengine validate (validation du resource pack sans écriture).

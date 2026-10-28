@@ -5,6 +5,7 @@ import dev.aaengine.core.diagnostic.DiagnosticCollector
 import dev.aaengine.core.io.SafePaths
 import dev.aaengine.items.ItemCatalogLoader
 import dev.aaengine.pack.BuiltPack
+import dev.aaengine.pack.PackCache
 import dev.aaengine.pack.PackCompiler
 import dev.aaengine.pack.PackLayout
 import dev.aaengine.pack.PackOutcome
@@ -29,7 +30,10 @@ class PackReport(
 /**
  * Build et validation du pack hors du thread principal (§26), sur l'exécuteur dédié [executor] : relecture
  * des fichiers d'items (mêmes règles que le reload), conversion, puis compilation. Une seule opération à la
- * fois ; le dernier pack valide reste annoncé tant qu'un nouveau build n'a pas réussi.
+ * fois.
+ *
+ * Deux états distincts : [current] (dernier build intact) et [published] (pack annoncé aux joueurs). Un build
+ * ne change jamais [published] : l'administrateur téléverse le zip puis lance `/aaengine pack publish`.
  */
 class PackService(
     private val layout: PackLayout,
@@ -45,16 +49,45 @@ class PackService(
     var current: BuiltPack? = null
         private set
 
+    /** Pack annoncé aux joueurs (SHA-1 envoyé au join), `null` tant que rien n'a été publié. */
+    @Volatile
+    var published: PackCache.Published? = null
+        private set
+
     val isBusy: Boolean
         get() = busy.get()
 
-    /** Relit le dernier pack construit (manifeste + SHA-256 du zip), sans recompiler. Asynchrone. */
-    fun loadCurrent(): CompletableFuture<BuiltPack?> = CompletableFuture.supplyAsync({ compiler.current().also { current = it } }, executor)
+    /**
+     * Démarrage : supprime les temporaires orphelins, relit le dernier build (empreintes recalculées sur le
+     * zip) et le pack annoncé, sans recompiler. Asynchrone.
+     */
+    fun loadCurrent(): CompletableFuture<BuiltPack?> =
+        CompletableFuture.supplyAsync({
+            compiler.cleanTemporaries()
+            published = compiler.published()
+            compiler.current().also { current = it }
+        }, executor)
+
+    /**
+     * Annonce le dernier build (après téléversement du zip). Le futur vaut `null` s'il n'y a aucun pack intact ;
+     * la méthode renvoie `null` si une opération est déjà en cours.
+     */
+    fun publish(): CompletableFuture<PackCache.Published?>? {
+        if (!busy.compareAndSet(false, true)) return null
+        return try {
+            CompletableFuture
+                .supplyAsync({ compiler.publish().also { if (it != null) published = it } }, executor)
+                .whenComplete { _, _ -> busy.set(false) }
+        } catch (e: RuntimeException) {
+            busy.set(false)
+            CompletableFuture.failedFuture(e)
+        }
+    }
 
     /** Construit le pack ([force] : ignore le cache). `null` si une opération est déjà en cours. */
     fun build(force: Boolean): CompletableFuture<PackReport>? =
         run { diagnostics ->
-            val outcome = compiler.build(PackInputs.from(loadItems(diagnostics)), diagnostics, force)
+            val outcome = compiler.build(PackInputs.from(loadItems(diagnostics), diagnostics), diagnostics, force)
             if (outcome.pack != null) current = outcome.pack
             outcome
         }
@@ -62,7 +95,7 @@ class PackService(
     /** Valide sources et références sans rien écrire. `null` si une opération est déjà en cours. */
     fun validate(): CompletableFuture<PackReport>? =
         run { diagnostics ->
-            compiler.validate(PackInputs.from(loadItems(diagnostics)), diagnostics)
+            compiler.validate(PackInputs.from(loadItems(diagnostics), diagnostics), diagnostics)
         }
 
     private fun loadItems(diagnostics: DiagnosticCollector) =

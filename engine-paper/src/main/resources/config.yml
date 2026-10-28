@@ -15,7 +15,8 @@ debug:
 # Construction : /aaengine pack build ; validation sans écriture : /aaengine validate.
 pack:
   # none : AAEngine n'envoie rien (server.properties, proxy...).
-  # external : AAEngine envoie au join l'URL ci-dessous avec le SHA-1 du dernier pack construit.
+  # external : AAEngine envoie au join l'URL ci-dessous avec le SHA-1 du pack annoncé
+  #   (/aaengine pack build, téléversement du zip, puis /aaengine pack publish).
   distribution: none
   # URL HTTPS publique où VOUS publiez cache/pack/aaengine-pack.zip après chaque build.
   # {sha1} est remplacé par le SHA-1 du pack (conseillé : une URL par version, pas de cache périmé).

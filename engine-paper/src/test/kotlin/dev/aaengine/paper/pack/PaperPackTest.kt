@@ -6,7 +6,8 @@ import dev.aaengine.core.diagnostic.DiagnosticCollector
 import dev.aaengine.core.log.EngineLog
 import dev.aaengine.items.ItemCatalogLoader
 import dev.aaengine.items.ItemFileParser
-import dev.aaengine.pack.BuiltPack
+import dev.aaengine.pack.PackCache
+import dev.aaengine.pack.PackCodes
 import dev.aaengine.pack.PackCompiler
 import dev.aaengine.pack.PackLayout
 import dev.aaengine.pack.PackStatus
@@ -91,7 +92,7 @@ class PaperPackTest {
                 ItemFileParser(PaperMaterials.catalog()),
             ).loadTexts(listOf(ItemCatalogLoader.SourceText("items/demo.yml", yaml)), d)
         assertEquals(0, d.errorCount, d.toList().toString())
-        val input = PackInputs.from(catalog)
+        val input = PackInputs.from(catalog, d)
         assertEquals(
             "minecraft:item/handheld",
             (
@@ -145,6 +146,39 @@ class PaperPackTest {
                 .outcome.status,
         )
         assertEquals(first.outcome.pack!!.sha1, service.loadCurrent().get(10, TimeUnit.SECONDS)!!.sha1)
+
+        // M3 : le build ne change pas le pack annoncé ; publish le bascule.
+        assertNull(service.published)
+        assertEquals(first.outcome.pack!!.sha1, service.publish()!!.get(10, TimeUnit.SECONDS)!!.sha1)
+        assertEquals(first.outcome.pack!!.sha1, service.published!!.sha1)
+        Files.writeString(
+            dir.resolve("pack/assets/aaengine/lang/fr_fr.json"),
+            "{}".also {
+                Files.createDirectories(dir.resolve("pack/assets/aaengine/lang"))
+            },
+        )
+        val rebuilt = service.build(force = false)!!.get(10, TimeUnit.SECONDS)
+        assertEquals(PackStatus.BUILT, rebuilt.outcome.status)
+        assertEquals(first.outcome.pack!!.sha1, service.published!!.sha1, "build seul : pack annoncé inchangé")
+    }
+
+    @Test
+    fun `cle non convertible - erreur explicite, jamais ignoree`() {
+        val spec =
+            ItemCatalogLoader(ItemFileParser(PaperMaterials.catalog()))
+                .loadTexts(
+                    listOf(ItemCatalogLoader.SourceText("items/a.yml", "items:\n  x:\n    item: { material: PAPER }\n")),
+                    DiagnosticCollector(),
+                ).items.values
+                .single()
+        // Clé Adventure valide mais chemin trop long pour le pack (> 256).
+        val long = spec.copy(tooltipStyle = Key.key("demo", "a".repeat(300)))
+        val d = DiagnosticCollector()
+        val input = PackInputs.from(dev.aaengine.items.ItemCatalog(mapOf(long.id to long), 1), d)
+        assertTrue(input.items.isEmpty())
+        val err = d.toList().single()
+        assertEquals(PackCodes.INVALID_STRUCTURE, err.code)
+        assertEquals("items.x.components.tooltip_style", err.path)
     }
 
     @Test
@@ -160,7 +194,7 @@ class PaperPackTest {
     @Test
     fun `distribution external - requete avec sha1 et url substituee`() {
         val sha1 = "0123456789abcdef0123456789abcdef01234567"
-        val pack = BuiltPack(dir.resolve("p.zip"), 10, sha1, "0".repeat(64), 1)
+        val pack = PackCache.Published(10, sha1, "0".repeat(64))
         val log = EngineLog(Logger.getLogger("AAEngineTest"))
         val settings =
             PackSettings(PackDistribution.EXTERNAL, "https://cdn.example.com/aaengine-{sha1}.zip", required = true, prompt = "Pack requis")

@@ -27,8 +27,8 @@ import org.bukkit.plugin.Plugin
 import java.util.concurrent.CompletableFuture
 
 /**
- * Commandes `/aaengine` (alias `/aae`) via Brigadier (§32) : `reload`, `give`, `items`, `info`, `pack build`
- * et `validate`.
+ * Commandes `/aaengine` (alias `/aae`) via Brigadier (§32) : `reload`, `give`, `items`, `info`,
+ * `pack build [force]`, `pack publish` et `validate`.
  * Tous les textes affichés sont des composants littéraux : aucune saisie n'est interprétée en MiniMessage.
  */
 class AAEngineCommands(
@@ -94,7 +94,7 @@ class AAEngineCommands(
                             .literal("build")
                             .executes { ctx -> packBuild(ctx.source.sender, force = false) }
                             .then(Commands.literal("force").executes { ctx -> packBuild(ctx.source.sender, force = true) }),
-                    ),
+                    ).then(Commands.literal("publish").executes { ctx -> packPublish(ctx.source.sender) }),
             ).then(
                 Commands
                     .literal("validate")
@@ -114,6 +114,33 @@ class AAEngineCommands(
         }
         sender.sendMessage(note(if (force) "Reconstruction complète du pack…" else "Construction du pack…"))
         future.whenComplete { r, error -> runFor(sender) { if (error != null) interrupted(sender, error) else packReport(sender, r) } }
+        return Command.SINGLE_SUCCESS
+    }
+
+    private fun packPublish(sender: CommandSender): Int {
+        val service = packs ?: return unavailable(sender)
+        val future = service.publish()
+        if (future == null) {
+            sender.sendMessage(err("Une opération sur le pack est déjà en cours."))
+            return 0
+        }
+        future.whenComplete { published, error ->
+            runFor(sender) {
+                when {
+                    error != null -> interrupted(sender, error)
+                    published == null -> sender.sendMessage(err("Aucun pack construit intact à annoncer : lancez /$ROOT pack build."))
+                    else -> {
+                        sender.sendMessage(ok("Pack annoncé aux prochaines connexions : SHA-1 ${published.sha1}."))
+                        sender.sendMessage(
+                            Component.text(
+                                " Le fichier servi à l'URL doit être exactement ce zip (sinon le client le refuse).",
+                                NamedTextColor.GRAY,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
         return Command.SINGLE_SUCCESS
     }
 
@@ -146,8 +173,25 @@ class AAEngineCommands(
         val pack = r.outcome.pack
         val counts = "${r.errorCount} erreur(s), ${r.warningCount} avertissement(s), ${r.durationMillis} ms"
         when (r.outcome.status) {
-            PackStatus.BUILT -> sender.sendMessage(ok("Pack construit : ${pack?.fileCount} fichier(s), ${pack?.size} octets ; $counts."))
-            PackStatus.UP_TO_DATE -> sender.sendMessage(ok("Pack à jour, rien à reconstruire ; $counts."))
+            PackStatus.BUILT, PackStatus.UP_TO_DATE -> {
+                val head =
+                    if (r.outcome.status ==
+                        PackStatus.BUILT
+                    ) {
+                        "Pack construit : ${pack?.fileCount} fichier(s), ${pack?.size} octets"
+                    } else {
+                        "Pack à jour, rien à reconstruire"
+                    }
+                sender.sendMessage(ok("$head ; $counts."))
+                val announced = packs?.published
+                if (pack != null && announced?.sha1 != pack.sha1) {
+                    sender.sendMessage(
+                        note(
+                            "Non annoncé aux joueurs : téléversez cache/pack/aaengine-pack.zip à l'URL du pack, puis /$ROOT pack publish.",
+                        ),
+                    )
+                }
+            }
             PackStatus.VALIDATED -> sender.sendMessage(ok("Pack valide : ${r.outcome.fileCount} fichier(s) ; $counts."))
             PackStatus.FAILED -> sender.sendMessage(err("Pack invalide : rien n'a été écrit, le pack précédent reste en place ; $counts."))
         }

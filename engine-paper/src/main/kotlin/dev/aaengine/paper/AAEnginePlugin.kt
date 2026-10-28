@@ -62,19 +62,22 @@ open class AAEnginePlugin : JavaPlugin() {
             reloads = service
 
             val packs = PackService(PackLayout(folder.root), { folder.itemsDir }, loader, exec.pack, logger)
-            val distributor = PackDistributor(config.pack, { packs.current }, log)
-            if (distributor.enabled) server.pluginManager.registerEvents(distributor, this)
-            // Dernier pack construit relu au démarrage (jamais recompilé ici : le SHA-1 annoncé ne change qu'au
-            // prochain /aaengine pack build, donc reste celui du fichier publié par l'administrateur).
+            val distributor = PackDistributor(config.pack, { packs.published }, log)
+            if (distributor.enabled) {
+                server.pluginManager.registerEvents(distributor, this)
+                distributor.checkDns(exec.pack)
+            }
+            // Au démarrage : rien n'est recompilé ; le SHA-1 annoncé est celui du dernier /aaengine pack publish.
             packs.loadCurrent().whenComplete { pack, error ->
                 when {
                     error != null -> log.error(LogCategory.PACK, "Lecture du pack en cache impossible (${error.javaClass.simpleName})")
-                    pack != null -> log.info(LogCategory.PACK, "Pack en cache : ${pack.fileCount} fichier(s), SHA-1 ${pack.sha1}")
-                    distributor.enabled ->
-                        log.warn(
-                            LogCategory.PACK,
-                            "Aucun pack construit : lancez /aaengine pack build puis publiez-le à l'URL configurée.",
-                        )
+                    pack != null -> log.info(LogCategory.PACK, "Dernier build : ${pack.fileCount} fichier(s), SHA-1 ${pack.sha1}")
+                }
+                val announced = packs.published
+                if (announced != null) {
+                    log.info(LogCategory.PACK, "Pack annoncé aux joueurs : SHA-1 ${announced.sha1}")
+                } else if (distributor.enabled) {
+                    log.warn(LogCategory.PACK, "Aucun pack publié : /aaengine pack build, téléversez le zip, puis /aaengine pack publish.")
                 }
             }
 

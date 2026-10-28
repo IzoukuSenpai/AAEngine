@@ -5,7 +5,7 @@ import dev.aaengine.core.config.PackSettings
 import dev.aaengine.core.log.EngineLog
 import dev.aaengine.core.log.LogCategory
 import dev.aaengine.core.net.PublicHttpsUrl
-import dev.aaengine.pack.BuiltPack
+import dev.aaengine.pack.PackCache
 import net.kyori.adventure.resource.ResourcePackInfo
 import net.kyori.adventure.resource.ResourcePackRequest
 import net.kyori.adventure.text.Component
@@ -15,11 +15,13 @@ import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Distribution `external` (§17, WP2d minimal) : au join, envoie l'URL HTTPS configurée avec le SHA-1 du
- * dernier pack construit, via `ResourcePackRequest` (API Paper/Adventure). Aucun serveur HTTP intégré :
+ * pack **annoncé** (`/aaengine pack publish`, jamais un simple build), via `ResourcePackRequest`. Aucun serveur HTTP intégré :
  * l'administrateur publie lui-même `cache/pack/aaengine-pack.zip` à cette URL.
  *
  * L'URL est revérifiée ([PublicHttpsUrl]) après substitution de `{sha1}` ; en cas de doute, rien n'est envoyé.
@@ -27,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class PackDistributor(
     private val settings: PackSettings,
-    private val packs: () -> BuiltPack?,
+    private val packs: () -> PackCache.Published?,
     private val log: EngineLog,
 ) : Listener {
     private val warnedMissing = AtomicBoolean(false)
@@ -46,7 +48,10 @@ class PackDistributor(
         val pack = packs()
         if (pack == null) {
             if (warnedMissing.compareAndSet(false, true)) {
-                log.warn(LogCategory.PACK, "Distribution external : aucun pack construit, rien n'est envoyé (lancez /aaengine pack build).")
+                log.warn(
+                    LogCategory.PACK,
+                    "Distribution external : aucun pack publié, rien n'est envoyé (/aaengine pack build, téléversement, /aaengine pack publish).",
+                )
             }
             return null
         }
@@ -66,6 +71,27 @@ class PackDistributor(
                 .replace(false)
         settings.prompt?.let { builder.prompt(Component.text(it)) }
         return builder.build()
+    }
+
+    /**
+     * Résolution DNS de l'hôte configuré sur [executor] (jamais le thread principal) : un simple
+     * avertissement si une adresse privée ou locale revient. Rien n'est bloqué (le client résout lui-même).
+     */
+    fun checkDns(executor: Executor): CompletableFuture<List<String>> {
+        if (!enabled || settings.allowPrivateHosts) return CompletableFuture.completedFuture(emptyList())
+        val host =
+            PublicHttpsUrl.check(PackSettings.expandUrl(settings.url ?: "", "0".repeat(40))).uri?.host
+                ?: return CompletableFuture.completedFuture(emptyList())
+        return CompletableFuture.supplyAsync({
+            PublicHttpsUrl.privateAddresses(host).also { found ->
+                if (found.isNotEmpty()) {
+                    log.warn(
+                        LogCategory.SECURITY,
+                        "L'hôte du pack $host résout vers des adresses non publiques : ${found.joinToString(", ")}",
+                    )
+                }
+            }
+        }, executor)
     }
 
     fun send(player: Player) {
