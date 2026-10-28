@@ -23,6 +23,6 @@ data class AAEngineApiVersion(
     companion object {
         /** Version courante d'`engine-api`. */
         @JvmField
-        val CURRENT: AAEngineApiVersion = AAEngineApiVersion(0, 1, 0)
+        val CURRENT: AAEngineApiVersion = AAEngineApiVersion(0, 2, 0)
     }
 }

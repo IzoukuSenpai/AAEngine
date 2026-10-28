@@ -16,10 +16,13 @@ class ItemEntry(
     override val itemModel: Key?,
     private val template: ItemStack,
 ) : AAItemDefinition {
+    /** Taille de pile effective du modèle (composant `max_stack_size` ou valeur du matériau), au moins 1. */
+    val maxStackSize: Int = maxOf(1, template.maxStackSize)
+
     /** Clone du modèle, quantité bornée à `1..maxStackSize`. */
     fun instantiate(amount: Int): ItemStack {
         val copy = template.clone()
-        copy.amount = amount.coerceIn(1, maxOf(1, copy.maxStackSize))
+        copy.amount = amount.coerceIn(1, maxStackSize)
         return copy
     }
 }

@@ -2,6 +2,7 @@ package dev.aaengine.core.engine
 
 import dev.aaengine.api.AAEngine
 import dev.aaengine.api.AAEngineApiVersion
+import dev.aaengine.api.AAReloadReport
 import dev.aaengine.api.glyph.AAGlyph
 import dev.aaengine.api.glyph.AAGlyphService
 import dev.aaengine.api.item.AAItemDefinition
@@ -36,6 +37,17 @@ class DefaultAAEngine(
 
     override val glyphs: AAGlyphService = SnapshotGlyphService()
 
+    @Volatile
+    private var lastReloadReport: AAReloadReport? = null
+
+    override val lastReload: AAReloadReport?
+        get() = lastReloadReport
+
+    /** Enregistre le bilan de la dernière tentative de chargement (appelé par le service de reload). */
+    fun recordReload(report: AAReloadReport) {
+        lastReloadReport = report
+    }
+
     /** Instantané courant (lecture). */
     fun snapshot(): ContentSnapshot = current.get()
 
@@ -61,7 +73,8 @@ class DefaultAAEngine(
     }
 
     private inner class SnapshotItemService : AAItemService {
-        override fun ids(): Set<Key> = java.util.Collections.unmodifiableSet(LinkedHashSet(current.get().items.keys))
+        // Vue non modifiable de la table immuable de l'instantané : stable après un reload, sans copie.
+        override fun ids(): Set<Key> = current.get().items.keys
 
         override fun exists(id: Key): Boolean = current.get().items.containsKey(id)
 
@@ -78,6 +91,8 @@ class DefaultAAEngine(
             }
             // Vue PDC en lecture seule : aucun clone d'ItemMeta sur ce chemin chaud (§36).
             val raw = stack.persistentDataContainer.get(ITEM_ID_KEY, PersistentDataType.STRING) ?: return null
+            // Cas courant : identifiant connu, sans parsing ni allocation. Sinon (item retiré) : parsing validé.
+            current.get().keyByString[raw]?.let { return it }
             return if (Key.parseable(raw)) Key.key(raw) else null
         }
     }

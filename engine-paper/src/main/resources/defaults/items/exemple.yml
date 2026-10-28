@@ -1,0 +1,34 @@
+# Exemple de fichier d'items AAEngine, créé au premier démarrage uniquement.
+# Chaque fichier *.yml du dossier items/ (sous-dossiers compris) est lu au démarrage et par /aaengine reload.
+# Identifiant complet d'un item : <namespace>:<identifiant local>, ici aaengine:forest_axe.
+# Les textes (name, lore) utilisent MiniMessage : https://docs.advntr.dev/minimessage/format.html
+
+# Namespace des items de ce fichier (optionnel, "aaengine" par défaut).
+namespace: aaengine
+
+items:
+  forest_axe:
+    item:
+      material: NETHERITE_AXE
+      name: "<green>Hache de la forêt"
+      lore:
+        - "<gray>Forgée dans le bois des anciens."
+        - "<dark_gray>Exemple AAEngine"
+    model:
+      # Modèle du resource pack (composant item_model), optionnel.
+      item_model: aaengine:forest_axe
+    components:
+      unbreakable: true
+
+  ruby:
+    item:
+      material: EMERALD
+      name: "<red>Rubis"
+    model:
+      # Entier simple, ou table { floats: [], flags: [], strings: [], colors: ["#RRGGBB"] }.
+      custom_model_data: 1001
+    components:
+      max_stack_size: 16
+      glint: true
+
+# Developped by AzurHOSTS.com and powered by AzurWare.fr.

@@ -5,3 +5,24 @@ api-version: '26.2'
 folia-supported: true
 description: AAEngine content engine for Paper servers (items, blocks, furniture, recipes, packs, fonts).
 authors: [AzurHOSTS]
+permissions:
+  aaengine.admin:
+    description: Accès à toutes les commandes AAEngine.
+    default: op
+    children:
+      aaengine.command.reload: true
+      aaengine.command.give: true
+      aaengine.command.items: true
+      aaengine.command.info: true
+  aaengine.command.reload:
+    description: /aaengine reload (rechargement transactionnel du contenu).
+    default: op
+  aaengine.command.give:
+    description: /aaengine give <joueur> <id> [quantité].
+    default: op
+  aaengine.command.items:
+    description: /aaengine items [page] (liste des items chargés).
+    default: op
+  aaengine.command.info:
+    description: /aaengine info (version, révision, dernier chargement).
+    default: op

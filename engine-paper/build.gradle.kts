@@ -14,3 +14,9 @@ dependencies {
     implementation(project(":engine-version-common"))
     implementation(project(":engine-integrations"))
 }
+
+// Tests : serveur simulé MockBukkit (composants de données, PDC, événements).
+dependencies {
+    testImplementation(libs.paper.api)
+    testImplementation(libs.mockbukkit)
+}

@@ -42,6 +42,10 @@ class DefaultAAEngineTest {
 
     @Test
     fun `version api compatible`() {
+        assertTrue(
+            AAEngineApiVersion.CURRENT.isCompatibleWith(AAEngineApiVersion(0, 1, 0)),
+            "0.2.0 reste compatible avec les consommateurs 0.1.0",
+        )
         assertTrue(AAEngineApiVersion(0, 1, 3).isCompatibleWith(AAEngineApiVersion(0, 1, 0)))
         assertFalse(AAEngineApiVersion(1, 0, 0).isCompatibleWith(AAEngineApiVersion(0, 1, 0)))
         assertFalse(AAEngineApiVersion(0, 0, 9).isCompatibleWith(AAEngineApiVersion(0, 1, 0)))

@@ -48,4 +48,4 @@ Modules:
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the module layout, lockfile policy and commit conventions.
 
-See also [docs/compatibility.md](./docs/compatibility.md) for the Nexo API compatibility facade plan.
+See also [docs/compatibility.md](./docs/compatibility.md) for the Nexo API compatibility facade plan, and [docs/items.md](./docs/items.md) for the item file format, reload and commands.

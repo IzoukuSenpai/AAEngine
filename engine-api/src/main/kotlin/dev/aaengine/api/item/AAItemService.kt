@@ -8,7 +8,10 @@ import org.bukkit.inventory.ItemStack
  * aucune ne lève pour un identifiant inconnu. Thread principal.
  */
 interface AAItemService {
-    /** Identifiants de l'instantané actif (copie immuable, vide tant que le contenu n'est pas chargé). */
+    /**
+     * Identifiants de l'instantané actif : vue immuable, sans copie, qui ne change pas après un reload
+     * (le reload remplace l'instantané). Vide tant que le contenu n'est pas chargé.
+     */
     fun ids(): Set<Key>
 
     fun exists(id: Key): Boolean
