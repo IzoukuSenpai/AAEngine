@@ -8,12 +8,15 @@ import java.io.IOException
 import java.nio.charset.CharacterCodingException
 import java.nio.file.Path
 
-/** Ensemble validé des définitions d'items, prêt à être compilé (immuable). */
+/** Ensemble validé des définitions d'items et des sets d'équipement, prêt à être compilé (immuable). */
 class ItemCatalog(
     items: Map<Key, ItemDefinitionSpec>,
     val fileCount: Int,
+    equipment: Map<Key, EquipmentSetSpec> = emptyMap(),
 ) {
     val items: Map<Key, ItemDefinitionSpec> = java.util.Collections.unmodifiableMap(LinkedHashMap(items))
+
+    val equipment: Map<Key, EquipmentSetSpec> = java.util.Collections.unmodifiableMap(LinkedHashMap(equipment))
 }
 
 /**
@@ -66,9 +69,9 @@ class ItemCatalogLoader(
                 )
                 break
             }
-            merger.add(parser.parse(source.displayPath, text.content, diagnostics))
+            merger.add(parser.parseFile(source.displayPath, text.content, diagnostics))
         }
-        return ItemCatalog(merger.items, sources.size)
+        return ItemCatalog(merger.items, sources.size, merger.equipment)
     }
 
     /** Variante sans disque : mêmes règles de parsing et de fusion. */
@@ -82,19 +85,36 @@ class ItemCatalogLoader(
                 diagnostics.error(source.displayPath, null, "Fichier trop volumineux (max ${limits.maxFileBytes / 1024} Kio)")
                 continue
             }
-            merger.add(parser.parse(source.displayPath, source.content, diagnostics))
+            merger.add(parser.parseFile(source.displayPath, source.content, diagnostics))
         }
-        return ItemCatalog(merger.items, sources.size)
+        return ItemCatalog(merger.items, sources.size, merger.equipment)
     }
 
     private inner class Merger(
         private val diagnostics: DiagnosticCollector,
     ) {
         val items = LinkedHashMap<Key, ItemDefinitionSpec>()
+        val equipment = LinkedHashMap<Key, EquipmentSetSpec>()
         private var overflow = false
 
-        fun add(specs: List<ItemDefinitionSpec>) {
-            for (spec in specs) {
+        fun add(file: ParsedItemFile) {
+            for (set in file.equipment) {
+                val existing = equipment[set.id]
+                if (existing != null) {
+                    diagnostics.error(
+                        set.source,
+                        set.nodePath,
+                        "Set d'équipement ${set.id.asString()} déjà défini dans ${existing.source} (${existing.nodePath})",
+                    )
+                    continue
+                }
+                if (equipment.size >= limits.maxItems) {
+                    diagnostics.error(set.source, set.nodePath, "Trop de sets d'équipement (max ${limits.maxItems})")
+                    break
+                }
+                equipment[set.id] = set
+            }
+            for (spec in file.items) {
                 val existing = items[spec.id]
                 if (existing != null) {
                     diagnostics.error(
