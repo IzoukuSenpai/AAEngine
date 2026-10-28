@@ -71,6 +71,7 @@ le message et une suggestion ; la ligne n'est indiquée que lorsque le parseur Y
 | `/aaengine items [page]` | `aaengine.command.items` |
 | `/aaengine info` | `aaengine.command.info` |
 | `/aaengine pack build [force]` | `aaengine.command.pack` |
+| `/aaengine pack publish` | `aaengine.command.pack` |
 | `/aaengine validate` | `aaengine.command.validate` |
 
 Toutes par défaut `op` ; `aaengine.admin` les accorde toutes.

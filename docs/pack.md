@@ -40,8 +40,13 @@ Lus en mémoire par un lecteur strict, rien n'est extrait sur disque. Une archiv
 différent du nom central, entrées qui se chevauchent, données hors limites, inflate incohérent (taille ou
 octets consommés), CRC32 ou data descriptor faux, `..`, chemin absolu, `\`, `:` (lecteur ou flux NTFS),
 noms réservés Windows (`CON`, `NUL`, `COM1`…), segments finissant par `.` ou espace, doublons (casse ou
-Unicode NFC), lien symbolique, ratio de compression > 200, plus de 20 000 entrées, 128 Mio compressés,
-16 Mio par entrée, 256 Mio décompressés. `pack.mcmeta` et `pack.png` de l'archive sont ignorés ; les
+Unicode NFC), lien symbolique, ratio de compression > 200 par entrée, volume décompressé total > 50 × la
+taille de l'archive (bombe répartie sur de nombreuses entrées), plus de 20 000 entrées, 64 Mio compressés,
+16 Mio par entrée, 96 Mio décompressés.
+
+Budget mémoire : une archive est lue entièrement en mémoire, puis ses entrées sont décompressées en
+mémoire ; le pic par archive est donc d'environ 64 + 96 Mio, et l'ensemble des sources (archives et
+`pack/assets`) reste plafonné à 256 Mio cumulés. Les octets lus ne sont jamais recopiés entre les étapes. `pack.mcmeta` et `pack.png` de l'archive sont ignorés ; les
 entrées hors `assets/` ou d'extension non autorisée sont ignorées avec un avertissement `PACK-W201`.
 
 Ordre de fusion : archives externes (ordre alphabétique), puis `pack/assets/`, puis fichiers générés.
@@ -55,7 +60,7 @@ Section `model` (un seul mode par item : `texture`, `model` **ou** `item_model`)
 
 | Clé | Valeur | Effet |
 |---|---|---|
-| `model.texture` | `<ns>:<chemin>` ou liste de calques (8 max) | génère `models/item/<id>.json` et `items/<id>.json`, pose `item_model` = id de l'item |
+| `model.texture` | `<ns>:<chemin>` ou liste de calques (8 acceptés, 5 émis : `layer0` à `layer4`, avertissement `PACK-W203` au-delà) | génère `models/item/<id>.json` et `items/<id>.json`, pose `item_model` = id de l'item |
 | `model.parent` | `<ns>:<chemin>` (avec `texture` uniquement) | parent du modèle généré ; défaut : `minecraft:item/handheld` pour épées, haches, pioches, pelles, houes, masse, bâton, tiges, trident ; `minecraft:item/generated` sinon |
 | `model.model` | `<ns>:<chemin>` | modèle JSON fourni (`assets/<ns>/models/<chemin>.json`, Blockbench) ; génère `items/<id>.json`, pose `item_model` |
 | `model.item_model` | `<ns>:<id>` | mode manuel : vous fournissez `assets/<ns>/items/<id>.json` (vérifié si le namespace n'est pas `minecraft`) |
@@ -119,7 +124,7 @@ items:
 
 Seul `items/statue.json` est généré ; parent et textures du modèle sont vérifiés. Une texture hors de
 `item/` et `block/` (ex. `aaengine:custom/statue`) est ajoutée automatiquement à
-`assets/minecraft/atlases/items.json`.
+`assets/minecraft/atlases/items.json` **et** `assets/minecraft/atlases/blocks.json`.
 
 ### Armure 4 pièces
 
@@ -189,26 +194,33 @@ Sans `.mcmeta`, le build passe avec un avertissement `PACK-W202` (sprite étiré
 |---|---|---|
 | `/aaengine pack build` | `aaengine.command.pack` | compile ; si rien n'a changé, « Pack à jour » sans réécriture |
 | `/aaengine pack build force` | `aaengine.command.pack` | recompile en ignorant le cache |
+| `/aaengine pack publish` | `aaengine.command.pack` | annonce le dernier build aux joueurs (à lancer après le téléversement du zip) |
 | `/aaengine validate` | `aaengine.command.validate` | relit items et sources et vérifie toutes les références, sans rien écrire |
 
 Permissions `op` par défaut, accordées par `aaengine.admin`. Une seule opération de pack à la fois, sur
 un thread dédié (`AAEngine-Pack`, compatible Folia). Le rapport affiche ERROR / WARN / INFO (15 lignes),
-le détail complet est en console. En cas d'erreur, **rien n'est écrit** : le pack précédent reste en place.
+le détail complet est en console. En cas d'erreur, **rien n'est installé** : le zip et le manifeste
+précédents restent intacts (un pack trop volumineux est contrôlé dans le fichier temporaire, avant tout
+remplacement). Un build ne change jamais le pack annoncé aux joueurs : le message de build rappelle de
+téléverser le zip puis de lancer `/aaengine pack publish`.
 Les erreurs d'items (fichiers `items/`) bloquent aussi le build.
 
 ## Cache incrémental
 
 `cache/pack/manifest.json` enregistre l'empreinte SHA-256 de toutes les entrées (origine, chemin et contenu
-de chaque source, entrées issues des items, version du compilateur, format 88.0) et les SHA-256 des sorties.
-Si l'empreinte est identique **et** que le zip sur disque a toujours le SHA-256 enregistré, le build est
-sauté. Un zip modifié ou supprimé est reconstruit à l'identique. Écritures atomiques (fichier temporaire
-`CREATE_NEW` puis remplacement), jamais à travers un lien.
+de chaque source, entrées issues des items, version du compilateur, version des règles, bornes, format
+88.0) et les SHA-256 des sorties. Si l'empreinte est identique **et** que le zip sur disque a toujours la
+taille, le SHA-1 et le SHA-256 enregistrés (recalculés en une passe sur les octets réels, le manifeste n'est
+jamais cru seul), le build est sauté. Un zip modifié ou supprimé est reconstruit à l'identique. Écritures
+atomiques : fichier temporaire `CREATE_NEW`, `FileChannel.force`, contrôle, puis remplacement, jamais à
+travers un lien. Les temporaires orphelins (`.<nom>.<uuid>.tmp`) sont supprimés au démarrage et à chaque build.
+`cache/pack/published.json` contient le pack annoncé (`/aaengine pack publish`).
 
 Le zip est déterministe : entrées triées, date fixe (2000-01-01), aucun dossier ni commentaire, deflate
 niveau 9. Le `pack.mcmeta` est toujours généré :
 
 ```json
-{ "pack": { "description": "AAEngine resource pack", "min_format": [88, 0], "max_format": 88 } }
+{ "pack": { "description": "AAEngine resource pack", "min_format": [88, 0], "max_format": [88, 0] } }
 ```
 
 ## Distribution
@@ -223,15 +235,20 @@ pack:
 ```
 
 - `none` : AAEngine n'envoie rien (vous utilisez `server.properties`, un proxy…).
-- `external` : à chaque connexion, AAEngine envoie l'URL et le SHA-1 du dernier pack construit via
-  `ResourcePackRequest` (identifiant de pack stable, `replace: false`).
+- `external` : à chaque connexion, AAEngine envoie l'URL et le SHA-1 du pack **annoncé** via
+  `ResourcePackRequest` (identifiant de pack stable, `replace: false`). Rien n'est envoyé tant qu'aucun pack
+  n'a été publié.
 - URL : HTTPS obligatoire ; identifiants, fragment, `localhost`, `.local`, adresses loopback, privées
-  (RFC 1918), lien local, CGNAT, multicast, ULA IPv6 et formes IPv4 non canoniques refusés (opt-in
-  `allow-private-hosts` pour un réseau de test). Une URL refusée désactive la distribution (avertissement).
-  Aucune résolution DNS : le serveur ne télécharge jamais cette URL.
-- **Procédure** : `/aaengine pack build` → publier `cache/pack/aaengine-pack.zip` à l'URL (avec `{sha1}`,
-  une nouvelle URL par version) → les joueurs qui se connectent reçoivent le nouveau SHA-1. Au démarrage, le
-  pack en cache est seulement relu, jamais recompilé : le SHA-1 annoncé reste celui du fichier publié.
+  (RFC 1918), lien local, CGNAT (100.64/10), multicast, 0/8, 240/4, plages de documentation (192.0.2/24,
+  198.51.100/24, 203.0.113/24, 2001:db8::/32), relais 6to4 192.88.99/24, Teredo (2001::/32), ULA IPv6 et
+  formes IPv4 non canoniques refusés ; pour NAT64 (64:ff9b::/96) et 6to4 (2002::/16), l'IPv4 embarquée est
+  réévaluée. Opt-in `allow-private-hosts` pour un réseau de test (avertissement au démarrage). Une URL
+  refusée désactive la distribution.
+- Au démarrage, l'hôte est résolu par DNS sur le thread du pack (jamais le thread principal) : une adresse
+  privée ou locale en réponse donne seulement un avertissement. Le serveur ne télécharge jamais cette URL.
+- **Procédure** : `/aaengine pack build` → téléverser `cache/pack/aaengine-pack.zip` à l'URL (avec `{sha1}`,
+  une nouvelle URL par version) → `/aaengine pack publish` → les joueurs qui se connectent reçoivent le
+  nouveau SHA-1. Ni un build ni un redémarrage ne changent le SHA-1 annoncé.
 
 Pas de serveur HTTP intégré dans ce lot (voir Suites).
 
@@ -253,8 +270,11 @@ Pas de serveur HTTP intégré dans ce lot (voir Suites).
 | `PACK-E112` | ERROR | structure invalide (définition d'item, modèle, atlas, équipement) |
 | `PACK-E113` | ERROR | PNG invalide ou trop grand |
 | `PACK-E114` | ERROR | écriture du pack ou du manifeste impossible |
+| `PACK-E115` | ERROR | cycle dans la chaîne de parents d'un modèle |
+| `PACK-E116` | ERROR | variable de texture `#nom` utilisée (textures, faces des éléments) mais jamais définie dans la chaîne de parents d'un modèle rendu |
 | `PACK-W201` | WARN | entrée d'archive ou fichier de `pack/external` ignoré |
 | `PACK-W202` | WARN | sprite de `tooltip_style` sans `.mcmeta` |
+| `PACK-W203` | WARN | plus de 5 calques : seuls `layer0` à `layer4` sont émis |
 | `PACK-I301` | INFO | références `minecraft:` absentes du pack, supposées vanilla |
 | `PACK-I302` | INFO | sprites ajoutés à l'atlas des items |
 | `PACK-I303` | INFO | bilan du build (fichiers, taille, SHA-1) |
@@ -268,12 +288,15 @@ ERROR PACK-E104 items/armes.yml [items.ruby_sword.model.texture] : Texture intro
 ## [A VÉRIFIER client 26.2]
 
 Points isolés dans `PackFormat` (engine-pack), à confirmer sur un client 26.2 réel (journal sans modèle ni
-texture manquants) :
+texture manquants). Le format 88.0 est confirmé par `version.json` du jar serveur Paper 26.2
+(`resource_major` 88, `resource_minor` 0). Aucun jar client 26.2 n'était disponible localement pour lire
+ses assets JSON (atlas, `item/generated`) : les choix ci-dessous sont prudents.
 
-- `pack.mcmeta` : schéma `min_format: [88, 0]` / `max_format: 88` **sans** `pack_format`.
-- Atlas : les modèles d'items cherchent leurs textures dans l'atlas `minecraft:items` ; les dossiers
-  `item/` et `block/` sont couverts par défaut ; les autres sprites sont ajoutés en `minecraft:single` à
-  `assets/minecraft/atlases/items.json`.
+- `pack.mcmeta` : forme uniforme `min_format: [88, 0]` / `max_format: [88, 0]` **sans** `pack_format`.
+- Atlas : faute de savoir lequel des atlas `minecraft:items` et `minecraft:blocks` lit les modèles d'items,
+  les sprites hors `item/` et `block/` sont ajoutés en `minecraft:single` aux **deux**.
+- Calques de `item/generated` : limités à 5 (`layer0`-`layer4`) sans preuve d'une limite supérieure.
+- Vérification des variables `#nom` faite seulement quand toute la chaîne de parents est dans le pack.
 - Taille maximale d'un pack serveur acceptée par le client : 250 Mio.
 - Sprites de `tooltip_style` : `gui/sprites/tooltip/<style>_background` et `_frame`, `nine_slice` attendu.
 - Équipement : couches `humanoid` / `humanoid_leggings` et dossiers `textures/entity/equipment/<couche>/`.
@@ -283,7 +306,7 @@ texture manquants) :
 ## Suites (hors de ce lot)
 
 - Serveur HTTP intégré (§19) et publication S3 / CDN (`PackPublisher`).
-- Renvoi du pack aux joueurs déjà connectés après un build.
+- Renvoi du pack aux joueurs déjà connectés après un `pack publish`.
 - Polices, glyphes, sons (`sounds.json`), langues fusionnées, overlays multi-versions, obfuscation.
 - Décodage complet des PNG (chunks, IDAT) au-delà de l'en-tête.
 

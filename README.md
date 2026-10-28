@@ -61,7 +61,7 @@ items:
     model: { texture: aaengine:item/ruby_sword }
 ```
 
-`/aaengine pack build` writes a deterministic `cache/pack/aaengine-pack.zip` (SHA-1 and SHA-256 reported, incremental cache), `/aaengine validate` checks every reference without writing. With `pack.distribution: external`, AAEngine sends your HTTPS URL and the SHA-1 to players on join.
+`/aaengine pack build` writes a deterministic `cache/pack/aaengine-pack.zip` (SHA-1 and SHA-256 reported, incremental cache), `/aaengine validate` checks every reference without writing. With `pack.distribution: external`, upload the zip to your HTTPS URL, run `/aaengine pack publish`, and AAEngine sends that URL and the published SHA-1 to players on join (a build alone never changes what players receive).
 
 ---
 
