@@ -23,7 +23,7 @@ import java.util.zip.Inflater
  * - bornes de chaque en-tête et de chaque donnée, données avant le répertoire central, intervalles des
  *   entrées disjoints (bombe par chevauchement) ;
  * - inflate : consomme exactement la taille compressée et produit exactement la taille déclarée, sans jamais
- *   dépasser les plafonds (par entrée, cumulé, ratio) ; CRC32 vérifié contre le répertoire central, l'en-tête
+ *   dépasser les plafonds (par entrée, cumulé, ratio par entrée, ratio global de l'archive) ; CRC32 vérifié contre le répertoire central, l'en-tête
  *   local et le data descriptor ;
  * - noms : `..`, `.`, segments vides, `/` initial, `\`, `:` (lecteur, flux NTFS), NUL et contrôles, noms
  *   réservés Windows, segments finissant par `.` ou une espace refusés ; doublons NFC + casse repliée refusés ;
@@ -89,9 +89,14 @@ class SafeZipReader(
 
         val result = ArrayList<Entry>()
         var total = 0L
+        // Bombe répartie sur de nombreuses entrées : volume total borné par un multiple de la taille de l'archive.
+        val globalBudget = n.toLong() * limits.maxGlobalRatio
         centrals.forEachIndexed { idx, c ->
             if (c.directory) return@forEachIndexed
-            val cap = minOf(limits.maxEntryBytes.toLong(), limits.maxTotalBytes - total)
+            if (c.uncompressed > globalBudget - total) {
+                reject("Ratio global de l'archive suspect (> ${limits.maxGlobalRatio} × sa taille) : ${shown(c.name)}")
+            }
+            val cap = minOf(limits.maxEntryBytes.toLong(), limits.maxTotalBytes - total, globalBudget - total)
             if (c.uncompressed > cap) reject(tooLarge(c.name))
             val data = extract(archive, c, dataStarts[idx], cap)
             if (data.size.toLong() != c.uncompressed) reject("Taille décompressée incohérente : ${shown(c.name)}")

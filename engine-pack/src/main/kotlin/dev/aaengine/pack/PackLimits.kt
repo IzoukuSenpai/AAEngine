@@ -44,14 +44,24 @@ data class ZipLimits(
     val maxArchiveBytes: Int = MAX_ARCHIVE_BYTES,
     val maxEntries: Int = MAX_ENTRIES,
     val maxEntryBytes: Int = PackLimits.MAX_FILE_BYTES,
-    val maxTotalBytes: Long = PackLimits.MAX_TOTAL_BYTES,
+    val maxTotalBytes: Long = MAX_TOTAL_BYTES,
     val maxRatio: Int = MAX_RATIO,
+    val maxGlobalRatio: Int = MAX_GLOBAL_RATIO,
     val ratioThresholdBytes: Int = RATIO_THRESHOLD_BYTES,
     val maxNameLength: Int = MAX_NAME_LENGTH,
 ) {
     companion object {
         /** Taille maximale d'une archive (lue entièrement en mémoire, puis analysée). */
-        const val MAX_ARCHIVE_BYTES: Int = 128 * 1024 * 1024
+        const val MAX_ARCHIVE_BYTES: Int = 64 * 1024 * 1024
+
+        /**
+         * Volume décompressé maximal d'une archive. Pic mémoire d'une archive ≈ archive + ce volume
+         * (96 Mio + 64 Mio), le tout restant sous [PackLimits.MAX_TOTAL_BYTES] cumulé.
+         */
+        const val MAX_TOTAL_BYTES: Long = 96L * 1024 * 1024
+
+        /** Volume décompressé total d'une archive ≤ ce facteur × taille de l'archive (bombe répartie). */
+        const val MAX_GLOBAL_RATIO: Int = 50
 
         /** Entrées au plus par archive. */
         const val MAX_ENTRIES: Int = 20_000

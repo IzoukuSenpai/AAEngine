@@ -8,13 +8,12 @@ import java.security.MessageDigest
  * @property path chemin dans le pack (`assets/aaengine/textures/item/x.png`, séparateur `/`)
  * @property origin source lisible pour les diagnostics (`pack/assets`, `pack/external/foo.zip`, `généré`)
  */
-class PackFile(
+class PackFile internal constructor(
     val path: String,
-    bytes: ByteArray,
+    /** Tableau repris tel quel (aucune copie) : l'appelant interne ne doit plus le modifier. */
+    private val data: ByteArray,
     val origin: String,
 ) {
-    private val data: ByteArray = bytes.copyOf()
-
     val size: Int
         get() = data.size
 
@@ -27,12 +26,24 @@ class PackFile(
     /** Écrit le contenu dans [sink] sans copie. */
     internal fun writeTo(sink: java.io.OutputStream) = sink.write(data)
 
+    /** Contenu sans copie, lecture seule par convention (module interne). */
+    internal val raw: ByteArray
+        get() = data
+
     internal fun text(): String = String(data, Charsets.UTF_8)
 
     internal fun sameContent(other: PackFile): Boolean = data.contentEquals(other.data)
 
     companion object {
         const val GENERATED: String = "généré"
+
+        /** Construction publique : copie défensive de [bytes]. */
+        @JvmStatic
+        fun copyOf(
+            path: String,
+            bytes: ByteArray,
+            origin: String,
+        ): PackFile = PackFile(path, bytes.copyOf(), origin)
     }
 }
 
