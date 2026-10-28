@@ -99,7 +99,11 @@ object PublicHttpsUrl {
         return null
     }
 
-    /** Vrai pour toute adresse non routable publiquement (IPv4 et IPv6). */
+    /**
+     * Vrai pour toute adresse non routable publiquement ou réservée : loopback, privées, lien local,
+     * multicast, CGNAT, documentation, bogons (0/8, 240/4…), ULA, Teredo, documentation IPv6 ; pour NAT64
+     * (64:ff9b::/96) et 6to4 (2002::/16), l'IPv4 embarquée est réévaluée.
+     */
     @JvmStatic
     fun isPrivate(address: InetAddress): Boolean {
         if (address.isAnyLocalAddress ||
@@ -112,25 +116,66 @@ object PublicHttpsUrl {
         }
         val b = address.address
         return when (address) {
-            is Inet4Address -> {
-                val a0 = b[0].toInt() and 0xFF
-                val a1 = b[1].toInt() and 0xFF
-                a0 == 0 ||
-                    (a0 == 100 && a1 in 64..127) ||
-                    (a0 == 192 && a1 == 0 && (b[2].toInt() and 0xFF) == 0) ||
-                    (a0 == 198 && a1 in 18..19) ||
-                    a0 >= 224
-            }
-            is Inet6Address -> {
-                val a0 = b[0].toInt() and 0xFF
-                // fc00::/7 (ULA), IPv4 compatible ::a.b.c.d et 64:ff9b::/96 (NAT64) traités comme privés.
-                (a0 and 0xFE) == 0xFC ||
-                    (b.take(12).all { it.toInt() == 0 }) ||
-                    (a0 == 0x00 && (b[1].toInt() and 0xFF) == 0x64 && (b[2].toInt() and 0xFF) == 0xFF && (b[3].toInt() and 0xFF) == 0x9B)
-            }
+            is Inet4Address -> isPrivateV4(b)
+            is Inet6Address -> isPrivateV6(b)
             else -> true
         }
     }
+
+    private fun isPrivateV4(b: ByteArray): Boolean {
+        val a0 = b[0].toInt() and 0xFF
+        val a1 = b[1].toInt() and 0xFF
+        val a2 = b[2].toInt() and 0xFF
+        return a0 == 0 ||
+            a0 == 10 ||
+            a0 == 127 ||
+            (a0 == 100 && a1 in 64..127) ||
+            (a0 == 169 && a1 == 254) ||
+            (a0 == 172 && a1 in 16..31) ||
+            (a0 == 192 && a1 == 168) ||
+            (a0 == 192 && a1 == 0 && (a2 == 0 || a2 == 2)) ||
+            (a0 == 192 && a1 == 88 && a2 == 99) ||
+            (a0 == 198 && a1 in 18..19) ||
+            (a0 == 198 && a1 == 51 && a2 == 100) ||
+            (a0 == 203 && a1 == 0 && a2 == 113) ||
+            a0 >= 224
+    }
+
+    private fun isPrivateV6(b: ByteArray): Boolean {
+        val w0 = ((b[0].toInt() and 0xFF) shl 8) or (b[1].toInt() and 0xFF)
+        val w1 = ((b[2].toInt() and 0xFF) shl 8) or (b[3].toInt() and 0xFF)
+        return when {
+            // fc00::/7 (ULA), fec0::/10 (site local obsolète)
+            (w0 and 0xFE00) == 0xFC00 || (w0 and 0xFFC0) == 0xFEC0 -> true
+            // ::/96 (IPv4 compatible, non spécifiée)
+            b.take(12).all { it.toInt() == 0 } -> true
+            // 2001:db8::/32 (documentation) et 2001::/32 (Teredo, IPv4 masquée)
+            w0 == 0x2001 && (w1 == 0x0db8 || w1 == 0x0000) -> true
+            // 64:ff9b::/96 (NAT64) : IPv4 dans les 4 derniers octets
+            w0 == 0x0064 && w1 == 0xFF9B && b.copyOfRange(4, 12).all { it.toInt() == 0 } -> isPrivateV4(b.copyOfRange(12, 16))
+            // 2002::/16 (6to4) : IPv4 dans les octets 2 à 5
+            w0 == 0x2002 -> isPrivateV4(b.copyOfRange(2, 6))
+            else -> false
+        }
+    }
+
+    /**
+     * Résolution DNS de [host] (à appeler hors du thread principal) : adresses non publiques renvoyées.
+     * Ne sert qu'à avertir l'administrateur ; le serveur ne se connecte jamais à cet hôte.
+     */
+    @JvmStatic
+    fun privateAddresses(host: String): List<String> =
+        try {
+            InetAddress
+                .getAllByName(host)
+                .filter(::isPrivate)
+                .map { it.hostAddress }
+                .distinct()
+        } catch (_: UnknownHostException) {
+            emptyList()
+        } catch (_: SecurityException) {
+            emptyList()
+        }
 }
 
 // Developped by AzurHOSTS.com and powered by AzurWare.fr.

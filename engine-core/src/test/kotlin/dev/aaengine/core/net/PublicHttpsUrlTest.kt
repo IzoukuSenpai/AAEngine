@@ -60,6 +60,43 @@ class PublicHttpsUrlTest {
     }
 
     @Test
+    fun `plages de documentation, bogons et IPv6 de transition refusees`() {
+        for (url in listOf(
+            "https://192.0.2.10/p.zip",
+            "https://198.51.100.1/p.zip",
+            "https://203.0.113.5/p.zip",
+            "https://192.88.99.1/p.zip",
+            "https://100.127.255.254/p.zip",
+            "https://0.1.2.3/p.zip",
+            "https://240.0.0.1/p.zip",
+            "https://255.255.255.255/p.zip",
+            "https://[2001:db8::1]/p.zip",
+            "https://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/p.zip",
+            "https://[64:ff9b::a00:1]/p.zip",
+            "https://[2002:c0a8:101::1]/p.zip",
+            "https://[fec0::1]/p.zip",
+        )) {
+            assertFalse(PublicHttpsUrl.check(url).ok, url)
+        }
+        // IPv4 publique embarquée en NAT64 / 6to4 : acceptée.
+        assertTrue(PublicHttpsUrl.check("https://[64:ff9b::5db8:d822]/p.zip").ok)
+        assertTrue(PublicHttpsUrl.check("https://[2002:5db8:d822::1]/p.zip").ok)
+    }
+
+    @Test
+    fun `resolution DNS signale les adresses privees`() {
+        assertTrue(PublicHttpsUrl.privateAddresses("localhost").isNotEmpty())
+        assertTrue(PublicHttpsUrl.privateAddresses("hote-inexistant.invalid").isEmpty())
+    }
+
+    @Test
+    fun `allow-private-hosts emet un avertissement`() {
+        val d = DiagnosticCollector()
+        EngineConfig.parse("pack:\n  allow-private-hosts: true\n", "config.yml", d)
+        assertEquals("pack.allow-private-hosts", d.toList().single().path)
+    }
+
+    @Test
     fun `opt-in reseau prive`() {
         assertTrue(PublicHttpsUrl.check("https://192.168.1.10/p.zip", allowPrivate = true).ok)
         assertFalse(PublicHttpsUrl.check("http://192.168.1.10/p.zip", allowPrivate = true).ok)

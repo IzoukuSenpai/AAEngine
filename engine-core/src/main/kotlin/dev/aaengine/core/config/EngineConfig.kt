@@ -101,6 +101,14 @@ data class EngineConfig(
             YamlDocuments.checkKeys(node, PACK_KEYS, file, diagnostics, Severity.WARN)
             val required = bool(node.node("required"), file, diagnostics) ?: false
             val allowPrivate = bool(node.node("allow-private-hosts"), file, diagnostics) ?: false
+            if (allowPrivate) {
+                diagnostics.warn(
+                    file,
+                    "pack.allow-private-hosts",
+                    "allow-private-hosts est activé : les URL locales et privées sont acceptées (réseau de test uniquement)",
+                    "false",
+                )
+            }
             val rawPrompt = node.node("prompt").rawScalar()
             val prompt = (rawPrompt as? String)?.takeIf { it.isNotEmpty() && it.length <= PackSettings.MAX_PROMPT }
             if (rawPrompt != null && prompt == null && rawPrompt != "") {
