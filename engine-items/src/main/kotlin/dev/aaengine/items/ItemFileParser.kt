@@ -4,9 +4,11 @@ import dev.aaengine.core.config.YamlDocuments
 import dev.aaengine.core.diagnostic.Diagnostic
 import dev.aaengine.core.diagnostic.DiagnosticCollector
 import dev.aaengine.core.diagnostic.Severity
+import dev.aaengine.core.diagnostic.Suggestions
 import net.kyori.adventure.key.Key
 import net.kyori.adventure.text.Component
 import org.spongepowered.configurate.ConfigurationNode
+import java.util.Locale
 
 /**
  * Lecture et validation d'un fichier d'items (format §47) :
@@ -16,8 +18,10 @@ import org.spongepowered.configurate.ConfigurationNode
  * items:
  *   forest_axe:
  *     item: { material: NETHERITE_AXE, name: "<green>Forest Axe", lore: ["..."] }
- *     model: { item_model: aaengine:forest_axe, custom_model_data: 1001 }
- *     components: { unbreakable: true, max_stack_size: 1, glint: true, hide_tooltip: false }
+ *     model: { texture: aaengine:item/forest_axe }   # ou model: <ns:chemin> ou item_model: <ns:id>
+ *     components: { unbreakable: true, glint: true, tooltip_style: aaengine:forest }
+ * equipment:                 # sets d'équipement (armures), référencés par components.equippable.asset
+ *   forest: { humanoid: aaengine:forest, humanoid_leggings: aaengine:forest }
  * ```
  *
  * Fonction pure (aucun accès disque ni serveur), utilisable hors du thread principal. Toute clé inconnue
@@ -32,26 +36,35 @@ class ItemFileParser(
         file: String,
         content: String,
         diagnostics: DiagnosticCollector,
-    ): List<ItemDefinitionSpec> {
-        val root = YamlDocuments.load(content, file, diagnostics) ?: return emptyList()
+    ): List<ItemDefinitionSpec> = parseFile(file, content, diagnostics).items
+
+    /** Comme [parse], avec les sets d'équipement de la section racine `equipment`. */
+    fun parseFile(
+        file: String,
+        content: String,
+        diagnostics: DiagnosticCollector,
+    ): ParsedItemFile {
+        val empty = ParsedItemFile(emptyList(), emptyList())
+        val root = YamlDocuments.load(content, file, diagnostics) ?: return empty
         if (root.virtual() || root.isNull || (root.isMap && root.childrenMap().isEmpty())) {
             diagnostics.warn(file, null, "Fichier vide")
-            return emptyList()
+            return empty
         }
         if (!root.isMap) {
             diagnostics.error(file, null, "La racine doit être une table (clés : ${ROOT_KEYS.joinToString(", ")})")
-            return emptyList()
+            return empty
         }
         YamlDocuments.checkKeys(root, ROOT_KEYS, file, diagnostics)
-        val namespace = namespaceOf(root.node("namespace"), file, diagnostics) ?: return emptyList()
+        val namespace = namespaceOf(root.node("namespace"), file, diagnostics) ?: return empty
+        val equipment = parseEquipmentSection(file, namespace, root.node("equipment"), diagnostics)
         val items = root.node("items")
         if (items.virtual() || items.isNull) {
-            diagnostics.warn(file, "items", "Aucune section items")
-            return emptyList()
+            if (equipment.isEmpty()) diagnostics.warn(file, "items", "Aucune section items")
+            return ParsedItemFile(emptyList(), equipment)
         }
         if (!items.isMap) {
             diagnostics.error(file, "items", "Table attendue : identifiant local -> définition")
-            return emptyList()
+            return ParsedItemFile(emptyList(), equipment)
         }
         val result = ArrayList<ItemDefinitionSpec>()
         for ((key, node) in items.childrenMap()) {
@@ -61,6 +74,43 @@ class ItemFileParser(
                 continue
             }
             parseItem(file, namespace, key, node, diagnostics)?.let(result::add)
+        }
+        return ParsedItemFile(result, equipment)
+    }
+
+    private fun parseEquipmentSection(
+        file: String,
+        namespace: String,
+        section: ConfigurationNode,
+        diagnostics: DiagnosticCollector,
+    ): List<EquipmentSetSpec> {
+        if (section.virtual() || section.isNull) return emptyList()
+        if (!section.isMap) {
+            diagnostics.error(file, "equipment", "Table attendue : identifiant du set -> couches")
+            return emptyList()
+        }
+        val ctx = Ctx(file, diagnostics)
+        val result = ArrayList<EquipmentSetSpec>()
+        for ((key, node) in section.childrenMap()) {
+            if (key !is String) {
+                diagnostics.add(YamlDocuments.nonTextKey(Severity.ERROR, file, node, key))
+                continue
+            }
+            val path = YamlDocuments.pathOf(node)
+            if (!ItemIds.isValidValue(key)) {
+                diagnostics.error(file, path, "Identifiant de set invalide ${Diagnostic.quote(key)}", ItemIds.sanitize(key))
+                continue
+            }
+            if (!ctx.requireMap(node, EQUIPMENT_KEYS)) continue
+            val errorsBefore = diagnostics.errorCount
+            val humanoid = ctx.optKey(node.node("humanoid"), namespace)
+            val leggings = ctx.optKey(node.node("humanoid_leggings"), namespace)
+            if (diagnostics.errorCount > errorsBefore) continue
+            if (humanoid == null && leggings == null) {
+                diagnostics.error(file, path, "Au moins une couche attendue (${EQUIPMENT_KEYS.joinToString(", ")})")
+                continue
+            }
+            result.add(EquipmentSetSpec(Key.key(namespace, key), file, path, humanoid, leggings))
         }
         return result
     }
@@ -125,10 +175,14 @@ class ItemFileParser(
         // Section model (optionnelle)
         var itemModel: Key? = null
         var cmd: CustomModelDataSpec? = null
+        var modelSource: ItemModelSource? = null
         val model = node.node("model")
         if (!model.virtual() && ctx.requireMap(model, MODEL_KEYS)) {
             itemModel = parseItemModel(model.node("item_model"), ctx)
             cmd = parseCustomModelData(model.node("custom_model_data"), ctx)
+            modelSource = parseModelSource(model, namespace, itemModel != null, ctx)
+            // Modèle généré : item_model pointe sur la définition émise sous le même identifiant que l'item.
+            if (modelSource != null) itemModel = Key.key(namespace, localId)
         }
 
         // Section components (optionnelle)
@@ -136,12 +190,16 @@ class ItemFileParser(
         var maxStack: Int? = null
         var glint: Boolean? = null
         var hideTooltip = false
+        var tooltipStyle: Key? = null
+        var equippable: EquippableSpec? = null
         val components = node.node("components")
         if (!components.virtual() && ctx.requireMap(components, COMPONENT_KEYS)) {
             unbreakable = ctx.optBool(components.node("unbreakable")) ?: false
             maxStack = ctx.optInt(components.node("max_stack_size"), 1..MAX_STACK)
             glint = ctx.optBool(components.node("glint"))
             hideTooltip = ctx.optBool(components.node("hide_tooltip")) ?: false
+            tooltipStyle = ctx.optKey(components.node("tooltip_style"), namespace)
+            equippable = parseEquippable(components.node("equippable"), namespace, ctx)
         }
         if (material != null && material.damageable && maxStack != null && maxStack > 1) {
             diagnostics.error(
@@ -166,7 +224,86 @@ class ItemFileParser(
             maxStackSize = maxStack,
             glint = glint,
             hideTooltip = hideTooltip,
+            model = modelSource,
+            tooltipStyle = tooltipStyle,
+            equippable = equippable,
         )
+    }
+
+    /**
+     * `model.texture` (clé ou liste de calques), `model.model` (modèle fourni) et `model.parent` (avec
+     * `texture` seulement). `texture`, `model` et `item_model` sont exclusifs.
+     */
+    private fun parseModelSource(
+        model: ConfigurationNode,
+        namespace: String,
+        hasItemModel: Boolean,
+        ctx: Ctx,
+    ): ItemModelSource? {
+        val textureNode = model.node("texture")
+        val modelNode = model.node("model")
+        val parentNode = model.node("parent")
+        val hasTexture = !textureNode.virtual() && !textureNode.isNull
+        val hasModel = !modelNode.virtual() && !modelNode.isNull
+        if (listOf(hasTexture, hasModel, hasItemModel).count { it } > 1) {
+            ctx.error(model, "texture, model et item_model sont exclusifs : un seul mode de modèle par item")
+            return null
+        }
+        if (!parentNode.virtual() && !parentNode.isNull && !hasTexture) {
+            ctx.error(parentNode, "parent n'est utilisable qu'avec texture (modèle généré)")
+            return null
+        }
+        if (hasModel) return ctx.key(modelNode, namespace)?.let { ItemModelSource.Provided(it) }
+        if (!hasTexture) return null
+        val layers =
+            if (textureNode.isList) {
+                val children = textureNode.childrenList()
+                if (children.isEmpty() || children.size > MAX_TEXTURE_LAYERS) {
+                    ctx.error(textureNode, "Entre 1 et $MAX_TEXTURE_LAYERS calques attendus")
+                    return null
+                }
+                val keys = children.map { ctx.key(it, namespace) }
+                if (keys.any { it == null }) return null
+                keys.filterNotNull()
+            } else {
+                listOf(ctx.key(textureNode, namespace) ?: return null)
+            }
+        // Parent : namespace minecraft par défaut (item/generated, item/handheld…).
+        val parent = if (parentNode.virtual() || parentNode.isNull) null else (ctx.key(parentNode, "minecraft") ?: return null)
+        return ItemModelSource.Textures(layers, parent)
+    }
+
+    private fun parseEquippable(
+        node: ConfigurationNode,
+        namespace: String,
+        ctx: Ctx,
+    ): EquippableSpec? {
+        if (node.virtual() || node.isNull) return null
+        if (!ctx.requireMap(node, EQUIPPABLE_KEYS)) return null
+        val slotNode = node.node("slot")
+        val assetNode = node.node("asset")
+        var slot: EquipSlot? = null
+        if (slotNode.virtual() || slotNode.isNull) {
+            ctx.error(node, "slot obligatoire (${EquipSlot.entries.joinToString("|") { it.configName }})")
+        } else {
+            val raw = ctx.text(slotNode)
+            if (raw != null) {
+                slot = EquipSlot.entries.firstOrNull { it.configName == raw.lowercase(Locale.ROOT) }
+                if (slot == null) {
+                    ctx.error(
+                        slotNode,
+                        "Emplacement inconnu ${Diagnostic.quote(raw)} (${EquipSlot.entries.joinToString("|") { it.configName }})",
+                        Suggestions.closest(raw, EquipSlot.entries.map { it.configName }),
+                    )
+                }
+            }
+        }
+        if (assetNode.virtual() || assetNode.isNull) {
+            ctx.error(node, "asset obligatoire (set d'équipement, ex. $namespace:forest)")
+            return null
+        }
+        val asset = ctx.key(assetNode, namespace) ?: return null
+        return slot?.let { EquippableSpec(it, asset) }
     }
 
     private fun parseMaterial(
@@ -313,6 +450,24 @@ class ItemFileParser(
 
         fun optText(node: ConfigurationNode): String? = if (node.virtual() || node.isNull) null else text(node)
 
+        /** Clé `ns:chemin` ou `chemin` (namespace [defaultNamespace]) ; erreur avec suggestion si invalide. */
+        fun key(
+            node: ConfigurationNode,
+            defaultNamespace: String,
+        ): Key? {
+            val raw = text(node) ?: return null
+            val key = ItemIds.parseKey(raw, defaultNamespace)
+            if (key == null) {
+                error(node, "Clé invalide ${Diagnostic.quote(raw)} (format namespace:chemin, [a-z0-9_./-])", ItemIds.sanitize(raw))
+            }
+            return key
+        }
+
+        fun optKey(
+            node: ConfigurationNode,
+            defaultNamespace: String,
+        ): Key? = if (node.virtual() || node.isNull) null else key(node, defaultNamespace)
+
         fun bool(node: ConfigurationNode): Boolean? {
             val raw = node.rawScalar()
             if (raw !is Boolean) {
@@ -377,8 +532,17 @@ class ItemFileParser(
 
         private val COLOR = Regex("#[0-9a-fA-F]{6}")
 
+        /** Calques au plus pour `model.texture` (`layer0`..`layer7`). */
+        const val MAX_TEXTURE_LAYERS: Int = 8
+
         @JvmField
-        val ROOT_KEYS: List<String> = listOf("namespace", "items")
+        val ROOT_KEYS: List<String> = listOf("namespace", "items", "equipment")
+
+        @JvmField
+        val EQUIPMENT_KEYS: List<String> = listOf("humanoid", "humanoid_leggings")
+
+        @JvmField
+        val EQUIPPABLE_KEYS: List<String> = listOf("slot", "asset")
 
         @JvmField
         val ITEM_KEYS: List<String> = listOf("item", "model", "components")
@@ -387,13 +551,14 @@ class ItemFileParser(
         val ITEM_SECTION_KEYS: List<String> = listOf("material", "name", "lore")
 
         @JvmField
-        val MODEL_KEYS: List<String> = listOf("item_model", "custom_model_data")
+        val MODEL_KEYS: List<String> = listOf("item_model", "custom_model_data", "texture", "model", "parent")
 
         @JvmField
         val CMD_KEYS: List<String> = listOf("floats", "flags", "strings", "colors")
 
         @JvmField
-        val COMPONENT_KEYS: List<String> = listOf("unbreakable", "max_stack_size", "glint", "hide_tooltip")
+        val COMPONENT_KEYS: List<String> =
+            listOf("unbreakable", "max_stack_size", "glint", "hide_tooltip", "tooltip_style", "equippable")
     }
 }
 

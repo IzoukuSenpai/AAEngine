@@ -47,28 +47,7 @@ object BoundedFiles {
         maxBytes: Int,
         allowedRoot: Path? = null,
     ): Text {
-        requireRegular(file)
-        val bytes =
-            Files.newByteChannel(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS).use { channel ->
-                // Relu après ouverture : le fichier ouvert est bien ordinaire et sous la racine autorisée.
-                requireRegular(file)
-                if (allowedRoot != null) SafePaths.requireRealPathUnder(allowedRoot, file)
-                val limit = maxBytes.toLong() + 1
-                var buffer = ByteBuffer.allocate(minOf(channel.size() + 1, limit).coerceAtLeast(1).toInt())
-                while (true) {
-                    if (!buffer.hasRemaining()) {
-                        if (buffer.capacity() >= limit) break
-                        val grown = ByteBuffer.allocate(minOf(buffer.capacity().toLong() * 2, limit).toInt())
-                        buffer.flip()
-                        grown.put(buffer)
-                        buffer = grown
-                    }
-                    if (channel.read(buffer) < 0) break
-                }
-                if (buffer.position() > maxBytes) throw TooLargeException(maxBytes.toLong())
-                buffer.flip()
-                buffer
-            }
+        val bytes = ByteBuffer.wrap(readBytes(file, maxBytes, allowedRoot))
         val size = bytes.remaining().toLong()
         val decoder =
             StandardCharsets.UTF_8
@@ -78,6 +57,40 @@ object BoundedFiles {
         val text = decoder.decode(bytes).toString()
         // BOM UTF-8 éventuel ignoré.
         return Text(if (text.startsWith(BOM)) text.substring(1) else text, size)
+    }
+
+    /**
+     * Lit les octets de [file], au plus [maxBytes], avec les mêmes garanties que [read] (taille contrôlée
+     * pendant la lecture, fichier ordinaire sans lien, chemin réel sous [allowedRoot] vérifié après ouverture).
+     * Lève [TooLargeException], [SafePaths.UnsafePathException] ou [IOException].
+     */
+    @JvmStatic
+    fun readBytes(
+        file: Path,
+        maxBytes: Int,
+        allowedRoot: Path? = null,
+    ): ByteArray {
+        requireRegular(file)
+        return Files.newByteChannel(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS).use { channel ->
+            // Relu après ouverture : le fichier ouvert est bien ordinaire et sous la racine autorisée.
+            requireRegular(file)
+            if (allowedRoot != null) SafePaths.requireRealPathUnder(allowedRoot, file)
+            val limit = maxBytes.toLong() + 1
+            var buffer = ByteBuffer.allocate(minOf(channel.size() + 1, limit).coerceAtLeast(1).toInt())
+            while (true) {
+                if (!buffer.hasRemaining()) {
+                    if (buffer.capacity() >= limit) break
+                    val grown = ByteBuffer.allocate(minOf(buffer.capacity().toLong() * 2, limit).toInt())
+                    buffer.flip()
+                    grown.put(buffer)
+                    buffer = grown
+                }
+                if (channel.read(buffer) < 0) break
+            }
+            if (buffer.position() > maxBytes) throw TooLargeException(maxBytes.toLong())
+            buffer.flip()
+            ByteArray(buffer.remaining()).also { buffer.get(it) }
+        }
     }
 
     private fun requireRegular(file: Path) {

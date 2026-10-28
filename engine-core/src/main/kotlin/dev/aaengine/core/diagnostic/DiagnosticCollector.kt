@@ -15,6 +15,9 @@ class DiagnosticCollector(
     var warningCount: Int = 0
         private set
 
+    var infoCount: Int = 0
+        private set
+
     val hasErrors: Boolean
         get() = errorCount > 0
 
@@ -22,6 +25,7 @@ class DiagnosticCollector(
         when (diagnostic.severity) {
             Severity.ERROR -> errorCount++
             Severity.WARN -> warningCount++
+            Severity.INFO -> infoCount++
         }
         if (entries.size < limit) entries.add(diagnostic)
     }
@@ -40,7 +44,13 @@ class DiagnosticCollector(
         suggestion: String? = null,
     ) = add(Diagnostic(Severity.WARN, file, path, message, suggestion))
 
-    /** Copie immuable des diagnostics conservés : erreurs d'abord, puis ordre d'apparition. */
+    fun info(
+        file: String?,
+        path: String?,
+        message: String,
+    ) = add(Diagnostic(Severity.INFO, file, path, message))
+
+    /** Copie immuable des diagnostics conservés : erreurs, avertissements puis informations, chacun dans l'ordre d'apparition. */
     fun toList(): List<Diagnostic> = entries.sortedBy { it.severity.ordinal }
 
     companion object {

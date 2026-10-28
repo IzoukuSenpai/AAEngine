@@ -12,9 +12,12 @@ import dev.aaengine.core.reload.ReloadService
 import dev.aaengine.items.ItemCatalog
 import dev.aaengine.items.ItemCatalogLoader
 import dev.aaengine.items.ItemFileParser
+import dev.aaengine.pack.PackLayout
 import dev.aaengine.paper.command.AAEngineCommands
 import dev.aaengine.paper.items.ItemsContentCompiler
 import dev.aaengine.paper.items.PaperMaterials
+import dev.aaengine.paper.pack.PackDistributor
+import dev.aaengine.paper.pack.PackService
 import io.papermc.paper.command.brigadier.Commands
 import io.papermc.paper.plugin.lifecycle.event.handler.LifecycleEventHandler
 import io.papermc.paper.plugin.lifecycle.event.registrar.ReloadableRegistrarEvent
@@ -42,7 +45,8 @@ open class AAEnginePlugin : JavaPlugin() {
         try {
             val folder = DataFolder(dataFolder.toPath())
             prepareDataFolder(folder, log)
-            log.debugCategories = loadConfig(folder, log).debugCategories
+            val config = loadConfig(folder, log)
+            log.debugCategories = config.debugCategories
 
             val loader = ItemCatalogLoader(ItemFileParser(PaperMaterials.catalog()))
             val exec = PaperExecutors(this).also { executors = it }
@@ -57,7 +61,27 @@ open class AAEnginePlugin : JavaPlugin() {
                 )
             reloads = service
 
-            val commands = AAEngineCommands(this, e, service)
+            val packs = PackService(PackLayout(folder.root), { folder.itemsDir }, loader, exec.pack, logger)
+            val distributor = PackDistributor(config.pack, { packs.published }, log)
+            if (distributor.enabled) {
+                server.pluginManager.registerEvents(distributor, this)
+                distributor.checkDns(exec.pack)
+            }
+            // Au démarrage : rien n'est recompilé ; le SHA-1 annoncé est celui du dernier /aaengine pack publish.
+            packs.loadCurrent().whenComplete { pack, error ->
+                when {
+                    error != null -> log.error(LogCategory.PACK, "Lecture du pack en cache impossible (${error.javaClass.simpleName})")
+                    pack != null -> log.info(LogCategory.PACK, "Dernier build : ${pack.fileCount} fichier(s), SHA-1 ${pack.sha1}")
+                }
+                val announced = packs.published
+                if (announced != null) {
+                    log.info(LogCategory.PACK, "Pack annoncé aux joueurs : SHA-1 ${announced.sha1}")
+                } else if (distributor.enabled) {
+                    log.warn(LogCategory.PACK, "Aucun pack publié : /aaengine pack build, téléversez le zip, puis /aaengine pack publish.")
+                }
+            }
+
+            val commands = AAEngineCommands(this, e, service, packs)
             lifecycleManager.registerEventHandler(
                 LifecycleEvents.COMMANDS,
                 LifecycleEventHandler { event: ReloadableRegistrarEvent<Commands> -> commands.register(event.registrar()) },
@@ -94,7 +118,9 @@ open class AAEnginePlugin : JavaPlugin() {
         log: EngineLog,
     ) {
         try {
-            val created = folder.ensureDefaults(::getResource)
+            val defaults = folder.ensureDefaults(::getResource)
+            val firstStart = "${DataFolder.ITEMS}/${DataFolder.EXAMPLE}" in defaults
+            val created = defaults + folder.ensurePackDirs(::getResource, withExample = firstStart)
             if (created.isNotEmpty()) log.info(LogCategory.BOOT, "Fichiers par défaut créés : ${created.joinToString(", ")}")
             if ("${DataFolder.ITEMS}/" in created && "${DataFolder.ITEMS}/${DataFolder.EXAMPLE}" !in created) {
                 log.warn(

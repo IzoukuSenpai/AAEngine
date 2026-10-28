@@ -14,6 +14,8 @@ permissions:
       aaengine.command.give: true
       aaengine.command.items: true
       aaengine.command.info: true
+      aaengine.command.pack: true
+      aaengine.command.validate: true
   aaengine.command.reload:
     description: /aaengine reload (rechargement transactionnel du contenu).
     default: op
@@ -25,4 +27,10 @@ permissions:
     default: op
   aaengine.command.info:
     description: /aaengine info (version, révision, dernier chargement).
+    default: op
+  aaengine.command.pack:
+    description: /aaengine pack build [force] et /aaengine pack publish (compilation et annonce du resource pack).
+    default: op
+  aaengine.command.validate:
+    description: /aaengine validate (validation du resource pack sans écriture).
     default: op

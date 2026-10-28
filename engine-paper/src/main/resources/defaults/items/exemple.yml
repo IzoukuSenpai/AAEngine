@@ -15,8 +15,10 @@ items:
         - "<gray>Forgée dans le bois des anciens."
         - "<dark_gray>Exemple AAEngine"
     model:
-      # Modèle du resource pack (composant item_model), optionnel.
-      item_model: aaengine:forest_axe
+      # Texture du resource pack : pack/assets/aaengine/textures/item/forest_axe.png (fournie en exemple).
+      # AAEngine génère le modèle (parent item/handheld pour une hache) et pose item_model automatiquement.
+      # Autres modes : model: <ns:chemin> (modèle JSON Blockbench) ou item_model: <ns:id> (manuel).
+      texture: aaengine:item/forest_axe
     components:
       unbreakable: true
 

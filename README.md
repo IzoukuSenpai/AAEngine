@@ -48,4 +48,21 @@ Modules:
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the module layout, lockfile policy and commit conventions.
 
-See also [docs/compatibility.md](./docs/compatibility.md) for the Nexo API compatibility facade plan, and [docs/items.md](./docs/items.md) for the item file format, reload and commands.
+See also [docs/compatibility.md](./docs/compatibility.md) for the Nexo API compatibility facade plan, [docs/items.md](./docs/items.md) for the item file format, reload and commands, and [docs/pack.md](./docs/pack.md) for the resource pack pipeline (Minecraft 26.2, pack format 88).
+
+## Resource pack (phase 3)
+
+Put textures and models in `plugins/AAEngine/pack/assets/`, third-party packs in `plugins/AAEngine/pack/external/*.zip`, then reference them from item files:
+
+```yaml
+items:
+  ruby_sword:
+    item: { material: DIAMOND_SWORD, name: "<red>Ruby Sword" }
+    model: { texture: aaengine:item/ruby_sword }
+```
+
+`/aaengine pack build` writes a deterministic `cache/pack/aaengine-pack.zip` (SHA-1 and SHA-256 reported, incremental cache), `/aaengine validate` checks every reference without writing. With `pack.distribution: external`, upload the zip to your HTTPS URL, run `/aaengine pack publish`, and AAEngine sends that URL and the published SHA-1 to players on join (a build alone never changes what players receive).
+
+---
+
+Developped by AzurHOSTS.com and powered by AzurWare.fr.
