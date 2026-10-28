@@ -33,12 +33,17 @@ class PackLayout(
     val manifestFile: Path
         get() = SafePaths.resolve(root, "$CACHE/$MANIFEST_NAME")
 
+    /** Pack annoncé aux joueurs (`/aaengine pack publish`). */
+    val publishedFile: Path
+        get() = SafePaths.resolve(root, "$CACHE/$PUBLISHED_NAME")
+
     companion object {
         const val ASSETS: String = "pack/assets"
         const val EXTERNAL: String = "pack/external"
         const val CACHE: String = "cache/pack"
         const val ZIP_NAME: String = "aaengine-pack.zip"
         const val MANIFEST_NAME: String = "manifest.json"
+        const val PUBLISHED_NAME: String = "published.json"
     }
 }
 

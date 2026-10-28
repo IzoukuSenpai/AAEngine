@@ -55,6 +55,12 @@ class PackBuildContext(
 
     private val parsed = HashMap<String, JsonValue?>()
 
+    /** Cycles de parents déjà signalés (un diagnostic par cycle). */
+    internal val reportedCycles: MutableSet<Set<String>> = HashSet()
+
+    /** Modèles rendus dont les variables de texture ont déjà été contrôlées. */
+    internal val checkedLeafModels: MutableSet<String> = HashSet()
+
     fun exists(path: String): Boolean = merged.containsKey(path)
 
     /**

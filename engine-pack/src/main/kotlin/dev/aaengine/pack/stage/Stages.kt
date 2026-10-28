@@ -58,7 +58,8 @@ class CacheCheckStage(
     override val dependencies = setOf(StageIds.LOAD_SOURCES)
 
     override fun execute(ctx: PackBuildContext) {
-        val fingerprint = cache.fingerprint(ctx.sources, ctx.input)
+        cache.cleanTemporaries()
+        val fingerprint = cache.fingerprint(ctx.sources, ctx.input, ctx.limits)
         ctx.fingerprint = fingerprint
         if (ctx.force || ctx.diagnostics.hasErrors) return
         val current = cache.current(fingerprint) ?: return
@@ -80,10 +81,21 @@ object GenerateItemModelsStage : PackStage {
                 when (model) {
                     is PackItemModel.Generated -> {
                         val modelId = ResourceId(item.id.namespace, "item/${item.id.path}")
+                        if (model.layers.size > PackFormat.MAX_GENERATED_LAYERS) {
+                            ctx.report(
+                                Severity.WARN,
+                                PackCodes.TOO_MANY_LAYERS,
+                                item.source,
+                                "${item.nodePath}.model.texture",
+                                "${model.layers.size} calques : seuls les ${PackFormat.MAX_GENERATED_LAYERS} premiers (layer0 à layer" +
+                                    "${PackFormat.MAX_GENERATED_LAYERS - 1}) sont émis",
+                            )
+                        }
                         val textures =
                             JsonObject(
                                 linkedMapOf(
                                     *model.layers
+                                        .take(PackFormat.MAX_GENERATED_LAYERS)
                                         .mapIndexed {
                                             i,
                                             t,
@@ -212,18 +224,14 @@ object AtlasStage : PackStage {
                 needed.add(texture)
             }
         }
-        val covered = (atlases[PackFormat.ITEMS_ATLAS_FILE].orEmpty() + atlases[BLOCKS_ATLAS].orEmpty())
-        val missing = needed.filter { sprite -> covered.none { covers(it, sprite) } }
-        if (missing.isNotEmpty()) {
-            val items = atlases.getOrPut(PackFormat.ITEMS_ATLAS_FILE) { ArrayList() }
-            for (sprite in missing) items.add(Json.obj("type" to Json.str("minecraft:single"), "resource" to Json.str(sprite.asString())))
-            ctx.report(
-                Severity.INFO,
-                PackCodes.ATLAS_SPRITES,
-                PackFormat.ITEMS_ATLAS_FILE,
-                null,
-                "${missing.size} sprite(s) hors item/ et block/ ajouté(s) à l'atlas des items",
-            )
+        // Sans preuve du client 26.2 sur l'atlas lu par les modèles d'items : sprite déclaré dans les deux.
+        for (atlasFile in PackFormat.SPRITE_ATLAS_FILES) {
+            val declared = atlases[atlasFile].orEmpty()
+            val missing = needed.filter { sprite -> declared.none { covers(it, sprite) } }
+            if (missing.isEmpty()) continue
+            val list = atlases.getOrPut(atlasFile) { ArrayList() }
+            for (sprite in missing) list.add(Json.obj("type" to Json.str("minecraft:single"), "resource" to Json.str(sprite.asString())))
+            ctx.report(Severity.INFO, PackCodes.ATLAS_SPRITES, atlasFile, null, "${missing.size} sprite(s) hors item/ et block/ ajouté(s)")
         }
         for ((path, sources) in atlases) {
             val bytes = Json.writeBytes(Json.obj("sources" to JsonArray(sources)))
@@ -307,7 +315,10 @@ object ValidateStage : PackStage {
                 structure(ctx, path, "Référence de modèle invalide '$raw'")
                 continue
             }
-            if (ctx.exists(ref.file("models", ".json"))) continue
+            if (ctx.exists(ref.file("models", ".json"))) {
+                checkVariables(ctx, ref.file("models", ".json"))
+                continue
+            }
             if (ref.namespace == ResourceId.MINECRAFT) {
                 vanilla[0]++
                 continue
@@ -316,12 +327,107 @@ object ValidateStage : PackStage {
         }
     }
 
+    /**
+     * Chaîne de parents de [path] restée dans le pack (s'arrête sur un parent `builtin/` ou absent du pack).
+     * Renvoie `null` si elle boucle (erreur signalée une fois par cycle) ; [complete] indique qu'aucun parent
+     * hors pack (vanilla) n'a interrompu la chaîne.
+     */
+    private class Chain(
+        val models: List<JsonObject>,
+        val complete: Boolean,
+    )
+
+    private fun chain(
+        ctx: PackBuildContext,
+        path: String,
+    ): Chain? {
+        val start = ctx.json(path) as? JsonObject ?: return null
+        val models = arrayListOf(start)
+        val seen = linkedSetOf(path)
+        var current = start
+        while (true) {
+            val ref = ModelGraph.parent(current)?.let { ResourceId.parse(it) } ?: return Chain(models, true)
+            if (ref.path.startsWith("builtin/")) return Chain(models, true)
+            val file = ref.file("models", ".json")
+            if (!ctx.exists(file)) return Chain(models, false)
+            if (!seen.add(file)) {
+                val cycle = seen.dropWhile { it != file }.toSet()
+                if (ctx.reportedCycles.add(cycle)) {
+                    ctx.report(
+                        Severity.ERROR,
+                        PackCodes.PARENT_CYCLE,
+                        path,
+                        null,
+                        "Cycle de parents : ${(seen.dropWhile { it != file } + file).joinToString(" -> ")}",
+                    )
+                }
+                return null
+            }
+            if (seen.size > MAX_PARENT_DEPTH) {
+                structure(ctx, path, "Chaîne de parents trop longue (max $MAX_PARENT_DEPTH)")
+                return null
+            }
+            current = ctx.json(file) as? JsonObject ?: return null
+            models.add(current)
+        }
+    }
+
+    /**
+     * Modèle rendu (cité par une définition d'item) : toute variable `#nom` utilisée par la chaîne de parents
+     * (valeurs de `textures`, faces des `elements`) doit être définie quelque part dans cette chaîne. Contrôle
+     * fait seulement si la chaîne est entièrement dans le pack (un parent vanilla peut définir des variables).
+     */
+    private fun checkVariables(
+        ctx: PackBuildContext,
+        path: String,
+    ) {
+        if (!ctx.checkedLeafModels.add(path)) return
+        val chain = chain(ctx, path) ?: return
+        if (!chain.complete) return
+        val vars = HashMap<String, String>()
+        for (m in chain.models.asReversed()) vars.putAll(ModelGraph.textureEntries(m))
+        val used = LinkedHashSet<String>()
+        for (m in chain.models) {
+            ModelGraph
+                .textureEntries(m)
+                .values
+                .filter { it.startsWith("#") }
+                .forEach(used::add)
+            used.addAll(ModelGraph.faceTextures(m).filter { it.startsWith("#") })
+        }
+        for (ref in used) {
+            var name = ref.removePrefix("#")
+            var depth = 0
+            while (true) {
+                val value = vars[name]
+                if (value == null) {
+                    missing(
+                        ctx,
+                        path,
+                        PackCodes.UNDEFINED_TEXTURE_VARIABLE,
+                        "Variable de texture '#$name' non définie dans la chaîne de parents",
+                    )
+                    break
+                }
+                if (!value.startsWith("#")) break
+                name = value.removePrefix("#")
+                if (++depth > MAX_PARENT_DEPTH) {
+                    missing(ctx, path, PackCodes.UNDEFINED_TEXTURE_VARIABLE, "Variables de texture circulaires à partir de '$ref'")
+                    break
+                }
+            }
+        }
+    }
+
+    private const val MAX_PARENT_DEPTH = 32
+
     private fun checkModel(
         ctx: PackBuildContext,
         path: String,
         vanilla: IntArray,
     ) {
         val json = ctx.json(path) as? JsonObject ?: return
+        chain(ctx, path)
         ModelGraph.parent(json)?.let { raw ->
             val ref = ResourceId.parse(raw)
             when {
@@ -453,7 +559,7 @@ object ValidateStage : PackStage {
         ctx: PackBuildContext,
         file: PackFile,
     ) {
-        val b = file.bytes()
+        val b = file.raw
         val ok =
             b.size >= PNG_HEADER &&
                 PNG_SIGNATURE.indices.all { b[it] == PNG_SIGNATURE[it] } &&
@@ -519,27 +625,29 @@ class BuildZipStage(
             ctx.halted = true
             return
         }
-        val fingerprint = ctx.fingerprint ?: cache.fingerprint(ctx.sources, ctx.input)
+        val fingerprint = ctx.fingerprint ?: cache.fingerprint(ctx.sources, ctx.input, ctx.limits)
         val files = ctx.merged.values.toList()
+        cache.cleanTemporaries()
         try {
             val target = ctx.layout.zipFile
-            val digest = cache.atomicWrite(target) { out -> DeterministicZipWriter.write(files, out) }
-            if (digest.size > ctx.limits.maxOutputBytes) {
-                ctx.report(
-                    Severity.ERROR,
-                    PackCodes.LIMIT,
-                    "${PackLayoutNames.CACHE_LABEL}/${target.fileName}",
-                    null,
-                    "Pack trop volumineux pour les clients (${digest.size / (1024 * 1024)} Mio, max ${ctx.limits.maxOutputBytes / (1024 * 1024)} Mio)",
-                )
-                java.nio.file.Files
-                    .deleteIfExists(target)
-                ctx.halted = true
-                return
-            }
+            // Taille contrôlée sur le temporaire, avant tout remplacement : le pack précédent reste intact.
+            val digest =
+                cache.atomicWrite(target, { out -> DeterministicZipWriter.write(files, out) }) { d ->
+                    if (d.size > ctx.limits.maxOutputBytes) throw PackCache.PackTooLargeException(d.size)
+                }
             val pack = BuiltPack(target, digest.size, digest.sha1, digest.sha256, files.size)
             cache.writeManifest(fingerprint, ctx.sources, ctx.input, files, pack)
             ctx.result = pack
+        } catch (e: PackCache.PackTooLargeException) {
+            ctx.report(
+                Severity.ERROR,
+                PackCodes.LIMIT,
+                "${PackLayoutNames.CACHE_LABEL}/${dev.aaengine.pack.PackLayout.ZIP_NAME}",
+                null,
+                "Pack trop volumineux pour les clients (${e.size / MIB} Mio, max ${ctx.limits.maxOutputBytes / MIB} Mio) : " +
+                    "non installé, le pack précédent reste en place",
+            )
+            ctx.halted = true
         } catch (e: IOException) {
             ctx.report(
                 Severity.ERROR,
@@ -553,6 +661,8 @@ class BuildZipStage(
         }
     }
 }
+
+private const val MIB = 1024 * 1024
 
 internal object PackLayoutNames {
     const val CACHE_LABEL: String = "cache/pack"
@@ -619,6 +729,31 @@ internal class ModelGraph(
                         else -> null
                     }
                 }.filter { !it.startsWith("#") }
+        }
+
+        /** Entrées `textures` d'un modèle (nom -> valeur, chaîne ou `sprite`), références `#…` comprises. */
+        fun textureEntries(model: JsonObject): Map<String, String> {
+            val textures = model["textures"] as? JsonObject ?: return emptyMap()
+            val out = LinkedHashMap<String, String>()
+            for ((k, v) in textures.members) {
+                val value =
+                    when (v) {
+                        is dev.aaengine.pack.json.JsonString -> v.value
+                        is JsonObject -> v.string("sprite")
+                        else -> null
+                    }
+                if (value != null) out[k] = value
+            }
+            return out
+        }
+
+        /** Textures des faces des `elements` d'un modèle (en général des références `#nom`). */
+        fun faceTextures(model: JsonObject): List<String> {
+            val elements = (model["elements"] as? JsonArray)?.items ?: return emptyList()
+            return elements.flatMap { e ->
+                val faces = (e as? JsonObject)?.get("faces") as? JsonObject ?: return@flatMap emptyList()
+                faces.members.values.mapNotNull { (it as? JsonObject)?.string("texture") }
+            }
         }
     }
 }

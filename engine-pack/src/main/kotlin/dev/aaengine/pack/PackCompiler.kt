@@ -105,8 +105,20 @@ class PackCompiler(
         return PackOutcome(if (diagnostics.hasErrors) PackStatus.FAILED else PackStatus.VALIDATED, null, ctx.merged.size)
     }
 
-    /** Dernier pack construit encore intact sur disque (manifeste + SHA-256 du zip), sans recompiler. */
+    /** Dernier pack construit encore intact sur disque (empreintes recalculées sur le zip), sans recompiler. */
     fun current(): BuiltPack? = cache.current(null)
+
+    /**
+     * Annonce le dernier pack construit (à faire une fois le zip téléversé) : c'est ce SHA-1 que reçoivent
+     * les joueurs. `null` s'il n'y a aucun pack intact à annoncer.
+     */
+    fun publish(): PackCache.Published? = cache.current(null)?.let(cache::writePublished)
+
+    /** Pack actuellement annoncé (`published.json`), indépendant des builds suivants. */
+    fun published(): PackCache.Published? = cache.readPublished()
+
+    /** Supprime les temporaires orphelins de `cache/pack/` (démarrage). */
+    fun cleanTemporaries(): Int = cache.cleanTemporaries()
 }
 
 // Developped by AzurHOSTS.com and powered by AzurWare.fr.

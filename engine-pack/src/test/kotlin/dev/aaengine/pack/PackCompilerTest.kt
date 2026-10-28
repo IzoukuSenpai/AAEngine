@@ -114,7 +114,10 @@ class PackCompilerTest {
                   88,
                   0
                 ],
-                "max_format": 88
+                "max_format": [
+                  88,
+                  0
+                ]
               }
             }
 
@@ -301,7 +304,7 @@ class PackCompilerTest {
     }
 
     @Test
-    fun `atlas - sprite hors item et block ajoute a l atlas des items`() {
+    fun `atlas - sprite hors item et block ajoute aux atlas items et blocks`() {
         val r = root()
         write(assets(r), "demo/textures/weapons/axe.png", png())
         val axe =
@@ -312,9 +315,11 @@ class PackCompilerTest {
             )
         val (outcome, d) = build(r, PackInput(listOf(axe), emptyList()))
         assertEquals(PackStatus.BUILT, outcome.status, d.toList().toString())
-        val atlas = entries(outcome.pack!!)[PackFormat.ITEMS_ATLAS_FILE]!!
-        assertTrue(atlas.contains("\"resource\": \"demo:weapons/axe\""), atlas)
-        assertEquals(PackCodes.ATLAS_SPRITES, d.toList().first { it.severity == Severity.INFO }.code)
+        for (atlasFile in PackFormat.SPRITE_ATLAS_FILES) {
+            val atlas = entries(outcome.pack!!)[atlasFile]!!
+            assertTrue(atlas.contains("\"resource\": \"demo:weapons/axe\""), atlas)
+        }
+        assertEquals(2, d.toList().count { it.code == PackCodes.ATLAS_SPRITES })
     }
 
     @Test

@@ -44,11 +44,20 @@ object PackCodes {
     /** Écriture du pack ou du cache impossible. */
     const val WRITE_FAILED: String = "PACK-E114"
 
+    /** Cycle dans la chaîne de parents d'un modèle. */
+    const val PARENT_CYCLE: String = "PACK-E115"
+
+    /** Variable de texture `#nom` utilisée mais jamais définie dans la chaîne de parents. */
+    const val UNDEFINED_TEXTURE_VARIABLE: String = "PACK-E116"
+
     /** Entrée d'archive externe ignorée (hors `assets/`, extension ou chemin non conforme). */
     const val SKIPPED_ENTRY: String = "PACK-W201"
 
     /** Sprite de `tooltip_style` sans `.mcmeta` (`nine_slice` conseillé). */
     const val TOOLTIP_NO_MCMETA: String = "PACK-W202"
+
+    /** Plus de calques que le modèle `item/generated` n'en accepte : les suivants sont ignorés. */
+    const val TOO_MANY_LAYERS: String = "PACK-W203"
 
     /** Référence vanilla (`minecraft:`) non vérifiable sans les assets du client. */
     const val VANILLA_REFERENCE: String = "PACK-I301"
