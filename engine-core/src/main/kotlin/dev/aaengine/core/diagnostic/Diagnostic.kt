@@ -1,9 +1,10 @@
 package dev.aaengine.core.diagnostic
 
-/** Gravité d'un diagnostic : toute [ERROR] bloque la publication du contenu. */
+/** Gravité d'un diagnostic : toute [ERROR] bloque la publication du contenu ; [INFO] est purement informatif. */
 enum class Severity {
     ERROR,
     WARN,
+    INFO,
 }
 
 /**
@@ -17,6 +18,7 @@ enum class Severity {
  * @property suggestion correction proposée (valeur la plus proche, format attendu…)
  * @property line ligne (1-based) uniquement quand le parseur YAML l'expose, jamais estimée
  * @property column colonne (1-based), mêmes règles que [line]
+ * @property code code stable du diagnostic (ex. `PACK-E104`), `null` pour les diagnostics sans code
  */
 data class Diagnostic(
     val severity: Severity,
@@ -26,11 +28,13 @@ data class Diagnostic(
     val suggestion: String? = null,
     val line: Int? = null,
     val column: Int? = null,
+    val code: String? = null,
 ) {
     /** Forme lisible sur une seule ligne, sans caractère de contrôle, pour la console et les commandes. */
     fun format(): String =
         buildString {
             append(severity.name)
+            if (code != null) append(' ').append(sanitize(code, MAX_CODE))
             if (file != null) {
                 append(' ').append(sanitize(file, MAX_FILE))
                 if (line != null) {
@@ -45,6 +49,7 @@ data class Diagnostic(
 
     companion object {
         private const val MAX_QUOTED = 80
+        private const val MAX_CODE = 16
         private const val MAX_FILE = 256
         private const val MAX_PATH = 256
         private const val MAX_SUGGESTION = 128
