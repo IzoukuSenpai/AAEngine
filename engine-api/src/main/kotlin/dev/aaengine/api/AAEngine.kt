@@ -28,4 +28,13 @@ interface AAEngine {
     val items: AAItemService
 
     val glyphs: AAGlyphService
+
+    /**
+     * Bilan de la dernière tentative de chargement (réussie ou non), ou `null` si aucune n'est terminée.
+     * Depuis Java : `getLastReload()`.
+     *
+     * @since API 0.2.0
+     */
+    val lastReload: AAReloadReport?
+        get() = null
 }

@@ -1,0 +1,13 @@
+# Configuration générale d'AAEngine.
+# Ce fichier est créé au premier démarrage et n'est jamais écrasé par le plugin.
+# Les items se définissent dans le dossier items/ (fichiers *.yml), voir items/exemple.yml.
+
+# Version du format de ce fichier : ne pas modifier.
+config-version: 1
+
+debug:
+  # Catégories de logs de debug à activer (aucune par défaut).
+  # Valeurs : BOOT, CONFIG, ITEMS, MECHANICS, BLOCKS, FURNITURE, PACK, NETWORK, VERSION, INTEGRATION, SECURITY
+  categories: []
+
+# Developped by AzurHOSTS.com and powered by AzurWare.fr.
