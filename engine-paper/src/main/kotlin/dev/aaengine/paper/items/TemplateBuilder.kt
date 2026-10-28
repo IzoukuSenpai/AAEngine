@@ -2,12 +2,15 @@ package dev.aaengine.paper.items
 
 import dev.aaengine.api.item.AAItemService
 import dev.aaengine.core.engine.DefaultAAEngine
+import dev.aaengine.items.EquipSlot
 import dev.aaengine.items.ItemDefinitionSpec
 import io.papermc.paper.datacomponent.DataComponentTypes
 import io.papermc.paper.datacomponent.item.CustomModelData
+import io.papermc.paper.datacomponent.item.Equippable
 import io.papermc.paper.datacomponent.item.ItemLore
 import io.papermc.paper.datacomponent.item.TooltipDisplay
 import org.bukkit.Color
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 
@@ -38,6 +41,14 @@ object TemplateBuilder {
         if (spec.unbreakable) stack.setData(DataComponentTypes.UNBREAKABLE)
         spec.maxStackSize?.let { stack.setData(DataComponentTypes.MAX_STACK_SIZE, it) }
         spec.glint?.let { stack.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, it) }
+        spec.tooltipStyle?.let { stack.setData(DataComponentTypes.TOOLTIP_STYLE, it) }
+        spec.equippable?.let { eq ->
+            // Son d'équipement du matériau conservé (armure vanilla) ; sinon son par défaut.
+            val base = stack.getData(DataComponentTypes.EQUIPPABLE)
+            val builder = Equippable.equippable(slot(eq.slot)).assetId(eq.asset)
+            base?.let { builder.equipSound(it.equipSound()) }
+            stack.setData(DataComponentTypes.EQUIPPABLE, builder.build())
+        }
         if (spec.hideTooltip) {
             stack.setData(DataComponentTypes.TOOLTIP_DISPLAY, TooltipDisplay.tooltipDisplay().hideTooltip(true).build())
         }
@@ -47,6 +58,14 @@ object TemplateBuilder {
         }
         return stack
     }
+
+    private fun slot(slot: EquipSlot): EquipmentSlot =
+        when (slot) {
+            EquipSlot.HEAD -> EquipmentSlot.HEAD
+            EquipSlot.CHEST -> EquipmentSlot.CHEST
+            EquipSlot.LEGS -> EquipmentSlot.LEGS
+            EquipSlot.FEET -> EquipmentSlot.FEET
+        }
 }
 
 // Developped by AzurHOSTS.com and powered by AzurWare.fr.

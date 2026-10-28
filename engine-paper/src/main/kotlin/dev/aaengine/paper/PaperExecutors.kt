@@ -27,13 +27,26 @@ class PaperExecutors(
 
     val async: Executor = Executor { task -> worker.execute(task) }
 
+    /** Thread dédié au compilateur de pack : un build long ne retarde jamais un reload. */
+    private val packWorker: ExecutorService =
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "AAEngine-Pack").apply {
+                isDaemon = true
+                priority = Thread.NORM_PRIORITY
+            }
+        }
+
+    val pack: Executor = Executor { task -> packWorker.execute(task) }
+
     val main: Executor = Executor { task -> plugin.server.globalRegionScheduler.execute(plugin, task) }
 
     /** Arrête le thread dédié (désactivation) : la tentative en cours est interrompue puis ignorée. */
     override fun close() {
         worker.shutdownNow()
+        packWorker.shutdownNow()
         try {
             worker.awaitTermination(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)
+            packWorker.awaitTermination(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         }

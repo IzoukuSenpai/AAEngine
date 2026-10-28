@@ -7,9 +7,11 @@ object Permissions {
     const val GIVE: String = "aaengine.command.give"
     const val ITEMS: String = "aaengine.command.items"
     const val INFO: String = "aaengine.command.info"
+    const val PACK: String = "aaengine.command.pack"
+    const val VALIDATE: String = "aaengine.command.validate"
 
     @JvmField
-    val ALL_COMMANDS: List<String> = listOf(ADMIN, RELOAD, GIVE, ITEMS, INFO)
+    val ALL_COMMANDS: List<String> = listOf(ADMIN, RELOAD, GIVE, ITEMS, INFO, PACK, VALIDATE)
 }
 
 // Developped by AzurHOSTS.com and powered by AzurWare.fr.

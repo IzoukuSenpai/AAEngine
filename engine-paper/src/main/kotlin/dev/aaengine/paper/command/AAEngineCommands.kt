@@ -11,6 +11,9 @@ import dev.aaengine.core.engine.DefaultAAEngine
 import dev.aaengine.core.reload.ReloadResult
 import dev.aaengine.core.reload.ReloadService
 import dev.aaengine.items.ItemIds
+import dev.aaengine.pack.PackStatus
+import dev.aaengine.paper.pack.PackReport
+import dev.aaengine.paper.pack.PackService
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes
@@ -24,13 +27,15 @@ import org.bukkit.plugin.Plugin
 import java.util.concurrent.CompletableFuture
 
 /**
- * Commandes `/aaengine` (alias `/aae`) via Brigadier (§32) : `reload`, `give`, `items`, `info`.
+ * Commandes `/aaengine` (alias `/aae`) via Brigadier (§32) : `reload`, `give`, `items`, `info`, `pack build`
+ * et `validate`.
  * Tous les textes affichés sont des composants littéraux : aucune saisie n'est interprétée en MiniMessage.
  */
 class AAEngineCommands(
     private val plugin: Plugin,
     private val engine: DefaultAAEngine,
     private val reloads: ReloadService<*>,
+    private val packs: PackService? = null,
 ) {
     /** Enregistre l'arbre de commandes auprès de Paper. */
     fun register(registrar: Commands) {
@@ -80,7 +85,89 @@ class AAEngineCommands(
                     .literal("info")
                     .requires { it.sender.hasPermission(Permissions.INFO) }
                     .executes { ctx -> info(ctx.source.sender) },
+            ).then(
+                Commands
+                    .literal("pack")
+                    .requires { it.sender.hasPermission(Permissions.PACK) }
+                    .then(
+                        Commands
+                            .literal("build")
+                            .executes { ctx -> packBuild(ctx.source.sender, force = false) }
+                            .then(Commands.literal("force").executes { ctx -> packBuild(ctx.source.sender, force = true) }),
+                    ),
+            ).then(
+                Commands
+                    .literal("validate")
+                    .requires { it.sender.hasPermission(Permissions.VALIDATE) }
+                    .executes { ctx -> packValidate(ctx.source.sender) },
             ).build()
+
+    private fun packBuild(
+        sender: CommandSender,
+        force: Boolean,
+    ): Int {
+        val service = packs ?: return unavailable(sender)
+        val future = service.build(force)
+        if (future == null) {
+            sender.sendMessage(err("Une opération sur le pack est déjà en cours."))
+            return 0
+        }
+        sender.sendMessage(note(if (force) "Reconstruction complète du pack…" else "Construction du pack…"))
+        future.whenComplete { r, error -> runFor(sender) { if (error != null) interrupted(sender, error) else packReport(sender, r) } }
+        return Command.SINGLE_SUCCESS
+    }
+
+    private fun packValidate(sender: CommandSender): Int {
+        val service = packs ?: return unavailable(sender)
+        val future = service.validate()
+        if (future == null) {
+            sender.sendMessage(err("Une opération sur le pack est déjà en cours."))
+            return 0
+        }
+        sender.sendMessage(note("Validation du pack…"))
+        future.whenComplete { r, error -> runFor(sender) { if (error != null) interrupted(sender, error) else packReport(sender, r) } }
+        return Command.SINGLE_SUCCESS
+    }
+
+    private fun unavailable(sender: CommandSender): Int {
+        sender.sendMessage(err("Compilateur de pack indisponible."))
+        return 0
+    }
+
+    private fun interrupted(
+        sender: CommandSender,
+        error: Throwable,
+    ) = sender.sendMessage(err("Opération interrompue (${error.javaClass.simpleName})."))
+
+    private fun packReport(
+        sender: CommandSender,
+        r: PackReport,
+    ) {
+        val pack = r.outcome.pack
+        val counts = "${r.errorCount} erreur(s), ${r.warningCount} avertissement(s), ${r.durationMillis} ms"
+        when (r.outcome.status) {
+            PackStatus.BUILT -> sender.sendMessage(ok("Pack construit : ${pack?.fileCount} fichier(s), ${pack?.size} octets ; $counts."))
+            PackStatus.UP_TO_DATE -> sender.sendMessage(ok("Pack à jour, rien à reconstruire ; $counts."))
+            PackStatus.VALIDATED -> sender.sendMessage(ok("Pack valide : ${r.outcome.fileCount} fichier(s) ; $counts."))
+            PackStatus.FAILED -> sender.sendMessage(err("Pack invalide : rien n'a été écrit, le pack précédent reste en place ; $counts."))
+        }
+        if (pack != null) {
+            sender.sendMessage(Component.text(" SHA-1 ${pack.sha1}", NamedTextColor.GRAY))
+            sender.sendMessage(Component.text(" SHA-256 ${pack.sha256}", NamedTextColor.GRAY))
+        }
+        val shown = r.diagnostics.take(MAX_DIAGNOSTICS_SHOWN)
+        for (d in shown) {
+            val color =
+                when (d.severity) {
+                    Severity.ERROR -> NamedTextColor.RED
+                    Severity.WARN -> NamedTextColor.YELLOW
+                    Severity.INFO -> NamedTextColor.GRAY
+                }
+            sender.sendMessage(Component.text(" - " + d.format(), color))
+        }
+        val hidden = r.errorCount + r.warningCount + r.infoCount - shown.size
+        if (hidden > 0) sender.sendMessage(Component.text(" … $hidden autre(s), voir la console.", NamedTextColor.GRAY))
+    }
 
     private fun reload(sender: CommandSender): Int {
         if (reloads.isReloading) {

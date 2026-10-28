@@ -52,6 +52,32 @@ class DataFolder(
         return created
     }
 
+    /**
+     * Crée `pack/assets/` et `pack/external/` s'ils sont absents (jamais à travers un lien). Si
+     * [withExample] (premier démarrage) et que `pack/assets/` vient d'être créé, y copie la texture de
+     * l'item d'exemple. Renvoie les chemins relatifs créés.
+     */
+    fun ensurePackDirs(
+        resources: (String) -> InputStream?,
+        withExample: Boolean,
+    ): List<String> {
+        val created = ArrayList<String>()
+        for (relative in listOf(PACK_ASSETS, PACK_EXTERNAL)) {
+            val dir = SafePaths.resolve(root, relative)
+            if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) continue
+            Files.createDirectories(dir)
+            SafePaths.requireNoSymlink(root, dir)
+            created.add("$relative/")
+            if (relative == PACK_ASSETS && withExample) {
+                val texture = SafePaths.resolve(root, "$PACK_ASSETS/$EXAMPLE_TEXTURE")
+                Files.createDirectories(texture.parent)
+                SafePaths.requireNoSymlink(root, texture.parent)
+                if (copyResource(resources, "$DEFAULTS_PACK/$EXAMPLE_TEXTURE", texture)) created.add("$PACK_ASSETS/$EXAMPLE_TEXTURE")
+            }
+        }
+        return created
+    }
+
     /** Contenu de `config.yml` (borné), ou `null` s'il est absent. */
     fun readConfig(): String? {
         val config = configFile
@@ -75,6 +101,10 @@ class DataFolder(
         const val CONFIG: String = "config.yml"
         const val ITEMS: String = "items"
         const val EXAMPLE: String = "exemple.yml"
+        const val PACK_ASSETS: String = "pack/assets"
+        const val PACK_EXTERNAL: String = "pack/external"
+        const val EXAMPLE_TEXTURE: String = "aaengine/textures/item/forest_axe.png"
+        const val DEFAULTS_PACK: String = "defaults/pack/assets"
         const val CONFIG_RESOURCE: String = "config.yml"
         const val EXAMPLE_RESOURCE: String = "defaults/items/exemple.yml"
 

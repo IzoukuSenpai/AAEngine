@@ -10,4 +10,22 @@ debug:
   # Valeurs : BOOT, CONFIG, ITEMS, MECHANICS, BLOCKS, FURNITURE, PACK, NETWORK, VERSION, INTEGRATION, SECURITY
   categories: []
 
+# Resource pack (voir docs/pack.md).
+# Sources : pack/assets/** (copié tel quel) et pack/external/*.zip ; sortie : cache/pack/aaengine-pack.zip.
+# Construction : /aaengine pack build ; validation sans écriture : /aaengine validate.
+pack:
+  # none : AAEngine n'envoie rien (server.properties, proxy...).
+  # external : AAEngine envoie au join l'URL ci-dessous avec le SHA-1 du dernier pack construit.
+  distribution: none
+  # URL HTTPS publique où VOUS publiez cache/pack/aaengine-pack.zip après chaque build.
+  # {sha1} est remplacé par le SHA-1 du pack (conseillé : une URL par version, pas de cache périmé).
+  # http, identifiants dans l'URL, localhost et adresses privées sont refusés.
+  url: ""
+  # true : le client doit accepter le pack pour rester connecté.
+  required: false
+  # Message affiché par le client (texte brut, 256 caractères max), vide = aucun.
+  prompt: ""
+  # Autorise les adresses privées / locales (réseau de test uniquement).
+  allow-private-hosts: false
+
 # Developped by AzurHOSTS.com and powered by AzurWare.fr.
