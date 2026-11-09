@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.4.21"
-paper-api = "26.2.build.135-stable"
+paper-api = "26.3.build.244-stable"
 configurate = "4.2.0"
 junit-bom = "6.1.3"
 mockbukkit = "4.117.0"
